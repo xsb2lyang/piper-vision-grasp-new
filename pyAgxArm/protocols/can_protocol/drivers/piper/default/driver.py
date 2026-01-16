@@ -1,0 +1,2308 @@
+import copy
+from typing import Optional, Callable, TypeVar, ClassVar, List, Dict
+from typing_extensions import Literal, Final
+
+from .parser import Parser
+from ...core.arm_driver_abstract import ArmDriverAbstract
+from ....msgs.core import MessageAbstract
+from ......utiles.numeric_codec import (
+    NumericCodec as nc,
+    RAD2DEG
+)
+from ....msgs.piper.default import (
+    ArmMsgModeCtrl,
+    ArmMsgFeedbackJointStates,
+    ArmMsgFeedbackEndPose,
+    ArmMsgFeedbackStatus,
+    ArmMsgFeedbackStatusEnum,
+    ArmMsgFeedbackLowSpd,
+    ArmMsgFeedbackHighSpd,
+    ArmMsgFeedbackCurrentMotorAngleLimitMaxSpd,
+    ArmMsgFeedbackCurrentMotorMaxAccLimit,
+    ArmMsgFeedbackCurrentEndVelAccParam,
+    ArmMsgMotorEnableDisableConfig,
+    ArmMsgReqFirmware,
+    ArmMsgSearchMotorMaxAngleSpdAccLimit,
+    ArmMsgMotorAngleLimitMaxSpdSet,
+    ArmMsgJointConfig,
+    ArmMsgParamEnquiryAndConfig,
+    ArmMsgEndVelAccParamConfig,
+    ArmMsgCrashProtectionRatingConfig,
+    ArmMsgMotionCtrl,
+    ArmMsgMasterArmMoveToHome,
+    ArmMsgMasterSlaveModeConfig,
+    ArmMsgJointCtrl,
+)
+
+
+T = TypeVar("T")
+
+
+class Driver(ArmDriverAbstract):
+    """Piper CAN driver.
+
+    Common conventions
+    ------------------
+    `timeout` (for request/response style APIs):
+    - `timeout < 0.0` raises ValueError.
+    - `timeout == 0.0`: non-blocking; evaluate readiness once and return
+      immediately.
+    - `timeout > 0.0`: blocking; poll until ready or timeout expires.
+
+    `joint_index`:
+    - `joint_index == 255` means "all joints".
+
+    `set_*` return semantics:
+    - Many `set_*` APIs are ACK-only: True means the controller acknowledged the
+      request.
+      This does not strictly guarantee the setting is already applied.
+    - Some `set_*` APIs additionally verify by reading back state; their
+      docstrings will mention the verification method if applicable.
+    """
+
+    class INSTALLATION_POS:
+        """
+        Installation position constants.
+
+        Use:
+            robot.set_installation_pos(robot.INSTALLATION_POS.HORIZONTAL)
+        """
+
+        HORIZONTAL: Final[Literal["horizontal"]] = "horizontal"
+        LEFT: Final[Literal["left"]] = "left"
+        RIGHT: Final[Literal["right"]] = "right"
+
+        # Keep as list for backward compatibility (callers may print or iterate).
+        _VALUES: ClassVar[List[str]] = [HORIZONTAL, LEFT, RIGHT]
+
+        # Internal mapping to protocol code.
+        _POS_CODE: ClassVar[Dict[str, int]] = {
+            HORIZONTAL: 0x01,
+            LEFT: 0x02,
+            RIGHT: 0x03,
+        }
+
+    class EE_LOAD:
+        """
+        End-effector load constants.
+
+        Use:
+            robot.set_ee_load(robot.EE_LOAD.EMPTY)
+        """
+
+        EMPTY: Final[Literal["empty"]] = "empty"
+        HALF: Final[Literal["half"]] = "half"
+        FULL: Final[Literal["full"]] = "full"
+
+        _VALUES: ClassVar[List[str]] = [EMPTY, HALF, FULL]
+        _LOAD_CODE: ClassVar[Dict[str, int]] = {
+            EMPTY: 0x00,
+            HALF: 0x01,
+            FULL: 0x02,
+        }
+
+    class MOTION_MODE:
+        """
+        Motion mode constants.
+
+        Use:
+            robot.set_motion_mode(robot.MOTION_MODE.J)
+        """
+
+        P: Final[Literal["p"]] = "p"
+        J: Final[Literal["j"]] = "j"
+        L: Final[Literal["l"]] = "l"
+        C: Final[Literal["c"]] = "c"
+        MIT: Final[Literal["mit"]] = "mit"
+        JS: Final[Literal["js"]] = "js"
+
+        _VALUES: ClassVar[List[str]] = [P, J, L, C, MIT, JS]
+        _MOVE_CODE: ClassVar[Dict[str, int]] = {
+            P: 0x00,
+            J: 0x01,
+            L: 0x02,
+            C: 0x03,
+            MIT: 0x04,
+            JS: 0x01,
+        }
+        _MIT_CODE: ClassVar[Dict[str, int]] = {
+            P: 0x00,
+            J: 0x00,
+            L: 0x00,
+            C: 0x00,
+            MIT: 0xAD,
+            JS: 0xAD,
+        }
+
+    ARM_STATUS = ArmMsgFeedbackStatusEnum
+
+    _Parser = Parser
+
+    # Can be overridden by subclasses to specify the message types used by the
+    # driver.
+    _MSG_ModeCtrl = ArmMsgModeCtrl
+    _MSG_MotorEnableDisableConfig = ArmMsgMotorEnableDisableConfig
+    _MSG_SearchMotorMaxAngleSpdAccLimit = ArmMsgSearchMotorMaxAngleSpdAccLimit
+    _MSG_ParamEnquiryAndConfig = ArmMsgParamEnquiryAndConfig
+    _MSG_JointConfig = ArmMsgJointConfig
+    _MSG_MotorAngleLimitMaxSpdSet = ArmMsgMotorAngleLimitMaxSpdSet
+    _MSG_EndVelAccParamConfig = ArmMsgEndVelAccParamConfig
+    _MSG_CrashProtectionRatingConfig = ArmMsgCrashProtectionRatingConfig
+
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self._parser: Parser = self._parser
+        self._msg_mode = self._MSG_ModeCtrl()
+
+    def _set_mode(self) -> None:
+        """Send cached mode message (`self._msg_mode`) to the controller."""
+        self._send_msg(self._msg_mode)
+
+    def _deal_move_p_msgs(self, pose: List[float]):
+        """Get pose control messages."""
+        if not isinstance(pose, list):
+            raise ValueError("Pose should be a list")
+
+        if len(pose) != 6:
+            raise ValueError(
+                "Pose should be [x, y, z, roll, pitch, yaw], "
+                "length should be 6"
+            )
+
+        # Radians to degrees conversion
+        rpy = [i * RAD2DEG for i in pose[3:]]
+
+        # Convert user inputs to protocol fields.
+        x = round(pose[0] * 1e6)
+        y = round(pose[1] * 1e6)
+        z = round(pose[2] * 1e6)
+
+        # Convert orientation to protocol fields.
+        roll = round(rpy[0] * 1e3)
+        pitch = round(rpy[1] * 1e3)
+        yaw = round(rpy[2] * 1e3)
+
+        return self._parser._make_end_pose_ctrl_msgs(
+            x_um=x,
+            y_um=y,
+            z_um=z,
+            roll_mdeg=roll,
+            pitch_mdeg=pitch,
+            yaw_mdeg=yaw,
+        )
+
+    def _deal_move_j_msgs(self, joints: List[float]):
+        """Get joint control messages."""
+        if not isinstance(joints, list):
+            raise ValueError("Joints should be a list")
+
+        if len(joints) != self._JOINT_NUMS:
+            expected = ", ".join(
+                f"j{i}" for i in range(1, self._JOINT_NUMS + 1)
+            )
+            raise ValueError(f"Joints should be [{expected}]")
+
+        # Convert user inputs to protocol fields.
+        joints_mdeg = [round(j * RAD2DEG * 1e3) for j in joints]
+        return self._parser._make_joint_ctrl_msgs(joints_mdeg)
+
+    def _all_joints_bool(self, fn: Callable[[int], bool]) -> bool:
+        """Apply a bool-returning function to all joints and AND results."""
+        return all(fn(i) for i in self._JOINT_INDEX_LIST[:-1])
+
+    # -------------------------
+    # Common "set_*" templates (ACK-only / ACK+verify)
+    # -------------------------
+    def _clear_resp_set_instruction(self) -> None:
+        """Clear cached `resp_set_instruction` message if present."""
+        if getattr(self._parser, "resp_set_instruction", None) is not None:
+            self._parser.resp_set_instruction.msg.clear()
+
+    def _is_resp_set_instruction(self, instruction_index: int) -> bool:
+        """Return True if cached `resp_set_instruction` matches the index."""
+        return (
+            getattr(self._parser, "resp_set_instruction", None) is not None
+            and self._parser.resp_set_instruction.msg.instruction_index
+            == instruction_index
+        )
+
+    def _ack_only_set(
+        self,
+        *,
+        request: Callable[[], None],
+        instruction_index: int,
+        timeout: float = 1.0,
+        stamp_key: str,
+        clear_before: bool = True,
+    ) -> bool:
+        """Template for set_* APIs where success is defined as "ACK received".
+
+        Returns False on timeout. True means the controller acknowledged the
+        request.
+        """
+        if clear_before:
+            self._clear_resp_set_instruction()
+
+        def is_ready() -> bool:
+            return self._is_resp_set_instruction(instruction_index)
+
+        def get_value() -> bool:
+            return True
+
+        return bool(
+            self._ctx._request_and_get(
+                request=request,
+                is_ready=is_ready,
+                get_value=get_value,
+                timeout=timeout,
+                min_interval=0.0,
+                stamp_attr=stamp_key,
+            )
+        )
+
+    def _ack_and_check_set(
+        self,
+        *,
+        request: Callable[[], None],
+        instruction_index: int,
+        check: Callable[[], bool],
+        timeout: float = 1.0,
+        stamp_key: str,
+        clear_before: bool = True,
+    ) -> bool:
+        """Template for set_* APIs where success is "ACK received and state
+        verified".
+
+        Returns False on timeout, or if `check()` fails.
+        """
+        if clear_before:
+            self._clear_resp_set_instruction()
+
+        def is_ready() -> bool:
+            return (
+                self._is_resp_set_instruction(instruction_index)
+                and check()
+            )
+
+        def get_value() -> bool:
+            return True
+
+        return bool(
+            self._ctx._request_and_get(
+                request=request,
+                is_ready=is_ready,
+                get_value=get_value,
+                timeout=timeout,
+                min_interval=0.0,
+                stamp_attr=stamp_key,
+            )
+        )
+
+    def _resp_set_instruction_get(
+        self,
+        *,
+        request: Callable[[], None],
+        instruction_index: int,
+        get_value: Callable[[], T],
+        timeout: float = 1.0,
+        stamp_key: str,
+        clear_before: bool = True,
+    ) -> Optional[T]:
+        """Wait for `resp_set_instruction` with a specific instruction index,
+        then compute and return a typed value via `get_value()`."""
+        if clear_before:
+            self._clear_resp_set_instruction()
+
+        def is_ready() -> bool:
+            return self._is_resp_set_instruction(instruction_index)
+
+        return self._ctx._request_and_get(
+            request=request,
+            is_ready=is_ready,
+            get_value=get_value,
+            timeout=timeout,
+            min_interval=0.0,
+            stamp_attr=stamp_key,
+        )
+
+    # -------------------------- Get --------------------------
+
+    def get_joint_states(self):
+        """Get current joint states feedback.
+
+        Returns
+        -------
+        MessageAbstract[list[float]] | None
+            The joint states feedback.
+            If the joint states is not available, return None.
+
+        Message
+        -------
+        `list[float]`: joint states, unit: rad
+
+        Examples
+        --------
+        >>> js = robot.get_joint_states()
+        >>> if js is not None:
+        >>>     print(js.msg)
+        >>>     print(js.hz, js.timestamp)
+        """
+        joint_states: Optional[
+            MessageAbstract[ArmMsgFeedbackJointStates]
+        ] = None
+        if getattr(self, "_joint_states", None) is None:
+            self._joint_states = MessageAbstract(
+                msg=list([0.0] * self._JOINT_NUMS),
+                msg_type=ArmMsgFeedbackJointStates.type_,
+            )
+        if getattr(self._parser, "joint_12", None) is not None:
+            joint_states = self._parser.joint_12
+            self._joint_states.msg[0] = joint_states.msg.joint_1
+            self._joint_states.msg[1] = joint_states.msg.joint_2
+        if getattr(self._parser, "joint_34", None) is not None:
+            joint_states = self._parser.joint_34
+            self._joint_states.msg[2] = joint_states.msg.joint_3
+            self._joint_states.msg[3] = joint_states.msg.joint_4
+        if getattr(self._parser, "joint_56", None) is not None:
+            joint_states = self._parser.joint_56
+            self._joint_states.msg[4] = joint_states.msg.joint_5
+            self._joint_states.msg[5] = joint_states.msg.joint_6
+        if joint_states is not None:
+            self._joint_states.timestamp = joint_states.timestamp
+            self._joint_states.hz = self._ctx.fps.get_fps(
+                joint_states.msg_type)
+            return self._joint_states
+        else:
+            return None
+
+    def get_ee_pose(self):
+        """Get current end-effector pose feedback.
+
+        Returns
+        -------
+        MessageAbstract[list[float]] | None
+            The end pose feedback. If the end pose is not available, return
+            None.
+
+        Message
+        -------
+        `list[float]`-> `[x, y, z, roll, pitch, yaw]`
+
+        `x, y, z`: Position, unit: m
+
+        `roll, pitch, yaw`: Orientation, unit: rad
+
+        Rotation Convention
+        -------------------
+        The Euler angles follow `XYZ extrinsic` (fixed frame) convention, which
+        is equivalent to `ZYX intrinsic` (body frame) convention:
+
+        1. `Extrinsic XYZ`: Rotate about global X (RX), then Y (RY), then Z
+           (RZ)
+        2. `Intrinsic ZYX`: Rotate about body Z (RZ), then Y (RY), then X (RX)
+
+        Rotation matrix: `R = R_z(RZ) * R_y(RY) * R_x(RX)`
+
+        Examples
+        --------
+        >>> ep = robot.get_ee_pose()
+        >>> if ep is not None:
+        >>>     x, y, z, roll, pitch, yaw = ep.msg
+        >>>     print(x, y, z, roll, pitch, yaw)
+        >>>     print(ep.hz, ep.timestamp)
+        """
+        end_pose = None
+        if getattr(self, "_end_pose", None) is None:
+            self._end_pose = MessageAbstract(
+                msg=list([0.0] * 6), msg_type=ArmMsgFeedbackEndPose.type_
+            )
+        if getattr(self._parser, "end_pose_xy", None) is not None:
+            end_pose = self._parser.end_pose_xy
+            self._end_pose.msg[0] = end_pose.msg.X_axis
+            self._end_pose.msg[1] = end_pose.msg.Y_axis
+        if getattr(self._parser, "end_pose_zrx", None) is not None:
+            end_pose = self._parser.end_pose_zrx
+            self._end_pose.msg[2] = end_pose.msg.Z_axis
+            self._end_pose.msg[3] = end_pose.msg.RX_axis
+        if getattr(self._parser, "end_pose_ryrz", None) is not None:
+            end_pose = self._parser.end_pose_ryrz
+            self._end_pose.msg[4] = end_pose.msg.RY_axis
+            self._end_pose.msg[5] = end_pose.msg.RZ_axis
+        if end_pose is not None:
+            self._end_pose.timestamp = end_pose.timestamp
+            self._end_pose.hz = self._ctx.fps.get_fps(end_pose.msg_type)
+            return self._end_pose
+        else:
+            return None
+
+    def get_arm_status(self):
+        """Get the arm status feedback.
+
+        Returns
+        -------
+        MessageAbstract[ArmMsgFeedbackStatus] | None
+            The arm status feedback. If the arm status is not available, return
+            None.
+
+        Message
+        -------
+        `ctrl_mode`: Control mode
+
+        `arm_status`: Robot arm status
+
+        `mode_feedback`: Mode feedback
+
+        `teach_status`: Teaching status
+
+        `motion_status`: Motion status
+
+        `trajectory_num`: Current trajectory point number
+
+        `err_status`: Error status
+
+        Details
+        ---------
+        `ctrl_mode`: Control mode
+        - 0: Standby mode
+        - 1: CAN instruction control mode
+        - 2: Teaching mode
+        - 3: Ethernet control mode
+        - 4: Wi-Fi control mode
+        - 5: Remote control mode
+        - 6: Linkage teaching input mode
+        - 7: Offline trajectory mode
+
+        `arm_status`: Robot arm status
+        - 0: Normal
+        - 1: Emergency stop
+        - 2: No solution
+        - 3: Singularity point
+        - 4: Target angle exceeds limit
+        - 5: Joint communication exception
+        - 6: Joint brake not released
+        - 7: Collision occurred
+        - 8: Overspeed during teaching drag
+        - 9: Joint status abnormal
+        - 10: Other exception
+        - 11: Teaching record
+        - 12: Teaching execution
+        - 13: Teaching pause
+        - 14: Main controller NTC over temperature
+        - 15: Release resistor NTC over temperature
+
+        `mode_feedback`: Mode feedback
+        - 0: MOVE P
+        - 1: MOVE J
+        - 2: MOVE L
+        - 3: MOVE C
+        - 4: MOVE MIT
+        - 5: MOVE CPV
+
+        `teach_status`: Teaching status
+        - 0: Off
+        - 1: Start teaching record (enter drag teaching mode)
+        - 2: End teaching record (exit drag teaching mode)
+        - 3: Execute teaching trajectory (reproduce drag teaching trajectory)
+        - 4: Pause execution
+        - 5: Continue execution (continue trajectory reproduction)
+        - 6: Terminate execution
+        - 7: Move to trajectory starting point
+
+        `motion_status`: Motion status
+        - 0: Reached the target position
+        - 1: Not yet reached the target position
+
+        `trajectory_num`: Current trajectory point number
+        - 0~255 (feedback in offline trajectory mode)
+
+        `err_status`: Error status
+        - `joint_1_angle_limit`:
+            Joint 1 angle limit exceeded (False: normal, True: abnormal)
+        - `joint_2_angle_limit`:
+            Joint 2 angle limit exceeded (False: normal, True: abnormal)
+        - `joint_3_angle_limit`:
+            Joint 3 angle limit exceeded (False: normal, True: abnormal)
+        - `joint_4_angle_limit`:
+            Joint 4 angle limit exceeded (False: normal, True: abnormal)
+        - `joint_5_angle_limit`:
+            Joint 5 angle limit exceeded (False: normal, True: abnormal)
+        - `joint_6_angle_limit`:
+            Joint 6 angle limit exceeded (False: normal, True: abnormal)
+        - `communication_status_joint_1`:
+            Joint 1 communication exception (False: normal, True: abnormal)
+        - `communication_status_joint_2`:
+            Joint 2 communication exception (False: normal, True: abnormal)
+        - `communication_status_joint_3`:
+            Joint 3 communication exception (False: normal, True: abnormal)
+        - `communication_status_joint_4`:
+            Joint 4 communication exception (False: normal, True: abnormal)
+        - `communication_status_joint_5`:
+            Joint 5 communication exception (False: normal, True: abnormal)
+        - `communication_status_joint_6`:
+            Joint 6 communication exception (False: normal, True: abnormal)
+
+        Examples
+        --------
+        >>> arm_status = robot.get_arm_status()
+        >>> if arm_status is not None:
+        >>>     print(arm_status.msg)
+        >>>     print(
+        ...         arm_status.msg.arm_status
+        ...         == robot.ARM_STATUS.ArmStatus.NORMAL
+        ...     )
+        >>>     print(arm_status.hz, arm_status.timestamp)
+        >>>     # unit: Hz, s
+        """
+        arm_status: Optional[MessageAbstract[ArmMsgFeedbackStatus]] = getattr(
+            self._parser, "arm_status", None
+        )
+        if arm_status is not None:
+            arm_status.hz = self._ctx.fps.get_fps(arm_status.msg_type)
+            return arm_status
+        else:
+            return None
+
+    def get_driver_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6]):
+        """Get low-speed driver state feedback.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6]
+        - 1~6: get the driver state of the specified joint
+
+        Returns
+        -------
+        MessageAbstract[ArmMsgFeedbackLowSpd] | None
+            The specified joint's driver state, or None if not available.
+
+        Message
+        -------
+        `vol`: Current driver voltage.
+
+        `foc_temp`: Driver temperature, unit: °C
+
+        `motor_temp`: Motor temperature, unit: °C
+
+        `bus_current`: Current driver current, unit: A
+
+        `foc_status`: Driver status.
+        - `voltage_too_low`: Power voltage too low, type: bool
+        - `motor_overheating`: Motor over-temperature, type: bool
+        - `driver_overcurrent`: Driver over-current, type: bool
+        - `driver_overheating`: Driver over-temperature, type: bool
+        - `collision_status`: Collision protection status, type: bool
+        - `driver_error_status`: Driver error status, type: bool
+        - `driver_enable_status`: Driver enable status, type: bool
+        - `stall_status`: Stalling protection status, type: bool
+
+        Examples
+        --------
+        >>> ds = robot.get_driver_states(1)
+        >>> if ds is not None:
+        >>>     print(ds.msg.foc_status.driver_enable_status)
+        >>>     print(ds.hz, ds.timestamp)
+        """
+        if joint_index not in self._JOINT_INDEX_LIST[:-1]:
+            raise ValueError(
+                f"Joint index should be {self._JOINT_INDEX_LIST[:-1]}")
+
+        driver_state: Optional[
+            MessageAbstract[ArmMsgFeedbackLowSpd]
+        ] = getattr(self._parser, f"driver_state_{joint_index}", None)
+        if driver_state is not None:
+            driver_state.hz = self._ctx.fps.get_fps(driver_state.msg_type)
+            return driver_state
+        else:
+            return None
+
+    def get_motor_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6]):
+        """Get high-speed motor state feedback.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6]
+        - 1~6: get the motor state of the specified joint
+
+        Returns
+        -------
+        MessageAbstract[ArmMsgFeedbackHighSpd] | None
+            The specified joint's motor state, or None if not available.
+
+        Message
+        -------
+        `pos`: Current motor position, unit: rad
+
+        `motor_speed`: Current motor speed, unit: rad/s
+
+        `current`: Current motor current, unit: A
+
+        `torque`: Current motor torque, unit: N·m
+
+        Examples
+        --------
+        >>> ms = robot.get_motor_states(1)
+        >>> if ms is not None:
+        >>>     print(ms.msg.pos, ms.msg.motor_speed, ms.msg.torque)
+        >>>     print(ms.hz, ms.timestamp)
+        """
+        if joint_index not in self._JOINT_INDEX_LIST[:-1]:
+            raise ValueError(
+                f"Joint index should be {self._JOINT_INDEX_LIST[:-1]}")
+
+        motor_state: Optional[
+            MessageAbstract[ArmMsgFeedbackHighSpd]
+        ] = getattr(self._parser, f"motor_state_{joint_index}", None)
+        if motor_state is not None:
+            motor_state.hz = self._ctx.fps.get_fps(motor_state.msg_type)
+            return motor_state
+        else:
+            return None
+
+    def get_joint_enable_status(self, joint_index: Literal[1, 2, 3, 4, 5, 6]):
+        """Get the enable status of the specified joint motor.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6]
+        - 1~6: get the enable status of the specified joint motor
+
+        Returns
+        -------
+        bool
+            Enable status of the specified joint motor (False if not
+            available).
+
+        Examples
+        --------
+        Get the enable status of joint 1:
+        >>> enable_status = robot.get_joint_enable_status(1)
+        >>> if enable_status:
+        >>>     print("Joint 1 motor is enabled")
+        """
+        if joint_index not in self._JOINT_INDEX_LIST[:-1]:
+            raise ValueError(
+                f"Joint index should be {self._JOINT_INDEX_LIST[:-1]}")
+
+        msg: Optional[MessageAbstract[ArmMsgFeedbackLowSpd]] = (
+            self.get_driver_states(joint_index=joint_index)
+        )
+        if msg is not None:
+            return msg.msg.foc_status.driver_enable_status
+        else:
+            return False
+
+    def get_joints_enable_status_list(self):
+        """Get the enable status of all joint motors.
+
+        Returns
+        -------
+        list[bool]
+            Enable status of all joint motors.
+        """
+        return [self.get_joint_enable_status(i) for i in self._JOINT_INDEX_LIST[:-1]]
+    
+    def get_firmware(self, timeout: float = 1.0, min_interval: float = 1.0):
+        """Get the firmware information of the arm.
+
+        Parameters
+        ----------
+        `timeout`: float, optional
+        - Timeout in seconds (see `Driver` docstring: Common conventions ->
+          `timeout`).
+        - Default is 1.0.
+
+        `min_interval`: float, optional
+        - Minimum interval in seconds between two consecutive requests.
+        - Default is 1.0.
+
+        Returns
+        -------
+        dict | None
+            The firmware information of the arm.
+            If the firmware information is not available, return None.
+
+        Dict keys
+        ---------
+        `hardware_version`: Hardware version with batch (e.g. H-V1.2-1)
+
+        `motor_ratio_and_batch`: Motor ratio and batch (e.g. 10)
+
+        `node_type`: Node type (e.g. ARM_MC)
+
+        `software_version`: Software version (e.g. S-V1.8-2)
+
+        `production_date`: Production date (e.g. 250925)
+
+        `node_number`: Node number (e.g. 15)
+
+        Examples
+        --------
+        >>> firmware = robot.get_firmware()
+        >>> if firmware is not None:
+        >>>     print(
+        ...         firmware["hardware_version"],
+        ...         firmware["software_version"],
+        ...     )
+        >>> # Non-blocking: call with `timeout=0.0` (see `Driver` conventions).
+        """
+        def request() -> None:
+            self._send_msg(ArmMsgReqFirmware())
+
+        def is_ready() -> bool:
+            return (
+                getattr(self._parser, "firmware_info", None) is not None
+                and len(self._parser.firmware_info.msg.data_seg) == 8 * 11
+            )
+
+        def get_value() -> dict:
+            data = self._parser.firmware_info.msg.data_seg
+            return {
+                "hardware_version": data[0:8].decode("utf-8"),
+                "motor_ratio_and_batch": data[16:18].decode("utf-8"),
+                "node_type": data[32:38].decode("utf-8"),
+                "software_version": data[60:68].decode("utf-8"),
+                "production_date": data[68:74].decode("utf-8"),
+                "node_number": data[76:78].decode("utf-8"),
+            }
+
+        def clear() -> None:
+            self._parser.firmware_info.msg.clear()
+
+        return self._ctx._request_and_get(
+            request=request,
+            is_ready=is_ready,
+            get_value=get_value,
+            clear=clear,
+            timeout=timeout,
+            min_interval=min_interval,
+            stamp_attr="firmware_info",
+        )
+
+    # -------------------------- Enable/Disable --------------------------
+
+    def enable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 255] = 255):
+        """Enable one joint motor or all joint motors.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6, 255], optional
+        - 1~6: enable the specified joint
+        - 255: enable all joints (default)
+
+        Returns
+        -------
+        bool
+            True if the joint is enabled, False otherwise.
+
+        Examples
+        --------
+        >>> if robot.enable():
+        >>>     print("All joints enabled")
+        """
+        if joint_index not in self._JOINT_INDEX_LIST:
+            raise ValueError(f"Joint index should be {self._JOINT_INDEX_LIST}")
+
+        def send_enable_msg(joint_index):
+            msg = self._MSG_MotorEnableDisableConfig(
+                joint_index=joint_index, enable_flag=2)
+            self._send_msg(msg)
+
+        if joint_index == 255:
+            # return self._all_joints_bool(lambda i: self.enable(i))
+            send_enable_msg(self._JOINT_NUMS + 1)
+            return all(self.get_joints_enable_status_list())
+        else:
+            send_enable_msg(joint_index)
+            return self.get_joint_enable_status(joint_index=joint_index)
+
+    def disable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 255] = 255):
+        """Disable one joint motor or all joint motors.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6, 255], optional
+        - 1~6: disable the specified joint
+        - 255: disable all joints (default)
+
+        Returns
+        -------
+        bool
+            True if the joint is disabled, False otherwise.
+
+        Examples
+        --------
+        >>> if robot.disable():
+        >>>     print("All joints disabled")
+        """
+        if joint_index not in self._JOINT_INDEX_LIST:
+            raise ValueError(f"Joint index should be {self._JOINT_INDEX_LIST}")
+
+        def send_disable_msg(joint_index):
+            msg = self._MSG_MotorEnableDisableConfig(
+                joint_index=joint_index, enable_flag=1)
+            self._send_msg(msg)
+
+        if joint_index == 255:
+            # return self._all_joints_bool(lambda i: self.disable(i))
+            send_disable_msg(self._JOINT_NUMS + 1)
+            return all(not self.get_joint_enable_status(i) for i in self._JOINT_INDEX_LIST[:-1])
+        else:
+            send_disable_msg(joint_index)
+            return not self.get_joint_enable_status(joint_index=joint_index)
+
+    # -------------------- Reset and Emergency Stop --------------------
+
+    def reset(self):
+        """Reset motion controller state.
+
+        This issues a motion control command to reset the arm's motion state.
+
+        Examples
+        --------
+        Reset the arm:
+        >>> robot.reset()
+        """
+        msg = ArmMsgMotionCtrl(2)
+        self._send_msg(msg)
+
+    def electronic_emergency_stop(self):
+        """Trigger a damped emergency stop.
+
+        Initiates a controlled emergency stop by applying damping to all joints
+        and allowing rapid deceleration without mechanical shock.
+        """
+        msg = ArmMsgMotionCtrl(1)
+        self._send_msg(msg)
+
+    # -------------------------- Set --------------------------
+
+    def set_speed_percent(self, percent: int = 100):
+        """Set the percent of movement speed.
+
+        This setting controls the relative speed of the robotic arm.
+
+        Parameters
+        ----------
+        `percent`: int, optional
+            The speed percent value ranges from [0, 100]. Default is 100.
+
+        Raises
+        ------
+        ValueError
+            If `percent` is outside [0, 100].
+        """
+        if not isinstance(percent, int):
+            raise ValueError("Percent should be an integer")
+        if percent < 0 or percent > 100:
+            raise ValueError("Percent should be between 0 and 100")
+        self._msg_mode.move_spd_rate_ctrl = percent
+        self._set_mode()
+
+    def set_installation_pos(
+        self, pos: Literal['horizontal', 'left', 'right'] = 'horizontal'
+    ):
+        """Set base installation orientation.
+
+        Parameters
+        ----------
+        `pos`: Literal['horizontal', 'left', 'right']
+        - `INSTALLATION_POS.HORIZONTAL`: horizontal installation (default)
+        - `INSTALLATION_POS.LEFT`: left-side installation
+        - `INSTALLATION_POS.RIGHT`: right-side installation
+
+        Raises
+        ------
+        ValueError
+            If `pos` is not in ['horizontal', 'left', 'right'].
+
+        Examples
+        --------
+        >>> robot.set_installation_pos(robot.INSTALLATION_POS.HORIZONTAL)
+        >>> robot.set_installation_pos(robot.INSTALLATION_POS.LEFT)
+        >>> robot.set_installation_pos(robot.INSTALLATION_POS.RIGHT)
+        """
+        if pos not in self.INSTALLATION_POS._VALUES:
+            raise ValueError(
+                "Installation position should be in INSTALLATION_POS: "
+                f"{self.INSTALLATION_POS._VALUES}"
+            )
+        installation_pos = self.INSTALLATION_POS._POS_CODE[pos]
+        self._msg_mode.installation_pos = installation_pos
+        self._set_mode()
+        self._msg_mode.installation_pos = 0
+
+    def set_motion_mode(
+        self,
+        motion_mode: Literal['p', 'j', 'l', 'c', 'mit', 'js'] = 'p'
+    ):
+        """Set movement mode and MIT mode.
+
+        Parameters
+        ----------
+        `motion_mode`: Literal['p', 'j', 'l', 'c', 'mit', 'js']
+        - `MOTION_MODE.P`: move p
+        - `MOTION_MODE.J`: move j
+        - `MOTION_MODE.L`: move l
+        - `MOTION_MODE.C`: move c
+        - `MOTION_MODE.MIT`: move mit (MIT)
+        - `MOTION_MODE.JS`: move js (MIT)
+
+        Raises
+        ------
+        ValueError
+            If `motion_mode` is not in
+            ['p', 'j', 'l', 'c', 'mit', 'js'].
+
+        Examples
+        --------
+        >>> robot.set_motion_mode(robot.MOTION_MODE.P)
+        """
+        if motion_mode not in self.MOTION_MODE._VALUES:
+            raise ValueError(
+                "Invalid motion mode, should be in MOTION_MODE: "
+                f"{self.MOTION_MODE._VALUES}"
+            )
+        self._msg_mode.move_mode = self.MOTION_MODE._MOVE_CODE[motion_mode]
+        self._msg_mode.mit_mode = self.MOTION_MODE._MIT_CODE[motion_mode]
+        self._set_mode()
+
+    # -------------------------- Move --------------------------
+
+    def move_p(self, pose: List[float]):
+        """Move robot end-effector to specified pose in Cartesian space.
+
+        Parameters
+        ----------
+        `pose`: list[float]
+        - `list[float]` - > `[x, y, z, roll, pitch, yaw]`
+        - `x, y, z`: Position coordinates in meters.
+            (Numerical precision: 1e-6 m)
+        - `roll, pitch, yaw`: Rotation angles around X, Y, Z axes respectively
+            in radians. (Numerical precision: 1.74532925199e-5 rad)
+
+        Raises
+        ------
+        ValueError
+            If pose is not a list or has incorrect length (not 6 elements).
+
+        Examples
+        --------
+        >>> robot.move_p(
+        ...     [0.1, 0.0, 0.3, 0.0, 1.5707963267948966, 0.0]
+        ... )
+        """
+        # Prepare control messages
+        msgs = self._deal_move_p_msgs(pose)
+
+        # Set motion mode and send commands
+        self.set_motion_mode('p')
+        self._send_msgs(msgs)
+
+    def move_j(self, joints: List[float]):
+        """Move robot joints to the specified target angles (joint space).
+
+        Parameters
+        ----------
+        `joints`: list[float]
+        - `list[float]` - > `[j1, j2, j3, j4, j5, j6]`
+        - `j1..j6`: Joint angles in radians.
+            (Numerical precision: 1.74532925199e-5 rad)
+
+        Raises
+        ------
+        ValueError
+            If `joints` is not a list or does not have length 6.
+
+        Examples
+        --------
+        Move to joint angles:
+        >>> robot.move_j([0.5, 0.0, 0.0, 0.0, 0.0, 0.0])
+        """
+        # Prepare control messages
+        msgs = self._deal_move_j_msgs(joints)
+
+        # Set motion mode and send commands
+        self.set_motion_mode('j')
+        self._send_msgs(msgs)
+
+    def move_js(self, joints: List[float]):
+        """Move robot joints in joint space with "JS" mode enabled.
+
+        This is similar to `move_j`, but sets a specific `mit_mode`
+        before sending the joint command messages.
+
+        Parameters
+        ----------
+        `joints`: list[float]
+        - `list[float]` - > `[j1, j2, j3, j4, j5, j6]`
+        - `j1..j6`: Joint angles in radians.
+            (Numerical precision: 1.74532925199e-5 rad)
+
+        Raises
+        ------
+        ValueError
+            If `joints` is not a list or does not have length 6.
+
+        Examples
+        --------
+        Fast-response joint move:
+        >>> robot.move_js([0.5, 0.0, 0.0, 0.0, 0.0, 0.0])
+        """
+        # Prepare control messages
+        msgs = self._deal_move_j_msgs(joints)
+
+        # Set motion mode and send commands
+        self.set_motion_mode('js')
+        self._send_msgs(msgs)
+
+    def move_l(self, pose: List[float]):
+        """Move end-effector to target pose with linear (Cartesian) motion.
+
+        Parameters
+        ----------
+        `pose`: list[float]
+        - `list[float]` - > `[x, y, z, roll, pitch, yaw]`
+        - `x, y, z`: Position coordinates in meters.
+            (Numerical precision: 1e-6 m)
+        - `roll, pitch, yaw`: Rotation angles around X, Y, Z axes respectively
+            in radians. (Numerical precision: 1.74532925199e-5 rad)
+
+        Raises
+        ------
+        ValueError
+            If pose is not a list or has incorrect length (not 6 elements).
+
+        Examples
+        --------
+        >>> robot.move_l([0.2, 0.0, 0.3, 0.0, 1.5708, 0.0])
+        """
+        # Prepare control messages
+        msgs = self._deal_move_p_msgs(pose)
+
+        # Set motion mode and send commands
+        self.set_motion_mode('l')
+        self._send_msgs(msgs)
+
+    def move_c(
+        self,
+        start_pose: List[float],
+        mid_pose: List[float],
+        end_pose: List[float],
+    ):
+        """Move robot end-effector to specified pose in Cartesian space with
+        circular motion.
+
+        Parameters
+        ----------
+        `start_pose` | `mid_pose` | `end_pose`: list[float]
+        - `list[float]` - > `[x, y, z, roll, pitch, yaw]`
+        - `x, y, z`: Position coordinates in meters.
+            (Numerical precision: 1e-6 m)
+        - `roll, pitch, yaw`: Rotation angles around X, Y, Z axes respectively
+            in radians. (Numerical precision: 1.74532925199e-5 rad)
+
+        Raises
+        ------
+        ValueError
+            If start_pose, mid_pose, or end_pose
+            is not a list or has incorrect length (not 6 elements).
+
+        Examples
+        --------
+        >>> sp = [0.2, 0.0, 0.3, 0.0, 1.5708, 0.0]
+        >>> mp = [0.2, 0.05, 0.35, 0.0, 1.5708, 0.0]
+        >>> ep = [0.2, 0.0, 0.4, 0.0, 1.5708, 0.0]
+        >>> robot.move_c(sp, mp, ep)
+        """
+        # Prepare control messages
+        msgs = self._deal_move_p_msgs(start_pose)
+        msgs.append(self._parser._make_circular_coord_num_update_msg(0x01))
+        msgs += self._deal_move_p_msgs(mid_pose)
+        msgs.append(self._parser._make_circular_coord_num_update_msg(0x02))
+        msgs += self._deal_move_p_msgs(end_pose)
+        msgs.append(self._parser._make_circular_coord_num_update_msg(0x03))
+
+        # Set motion mode and send commands
+        self.set_motion_mode('c')
+        self._send_msgs(msgs)
+
+    def move_mit(
+        self,
+        joint_index: Literal[1, 2, 3, 4, 5, 6],
+        p_des: float = 0.0,
+        v_des: float = 0.0,
+        kp: float = 10.0,
+        kd: float = 0.8,
+        t_ff: float = 0.0,
+    ):
+        """Control a single joint in MIT (impedance/torque) style mode.
+
+        This API sends an MIT control message for a specific joint with desired
+        position/velocity, PD gains, and feed-forward torque.
+
+        The controller conceptually computes a reference torque:
+
+            T_ref = kp * (p_des - p) + kd * (v_des - v) + t_ff
+
+        where p/v are the measured joint position/velocity.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6]
+
+        `p_des`: float, optional
+        - Desired position reference (unit: rad). Range: [-12.5, 12.5].
+          Default is
+            0.0. (Numerical precision: 3.8147554741741054e-4 rad)
+
+        `v_des`: float, optional
+        - Desired velocity reference (unit: rad/s). Range: [-45.0, 45.0].
+          Default is
+            0.0. (Numerical precision: 2.197802197802198e-2 rad/s)
+
+        `kp`: float, optional
+        - Proportional gain. Range: [0.0, 500.0]. Default is 10.0.
+            (Numerical precision: 1.221001221001221e-1)
+
+        `kd`: float, optional
+        - Derivative gain. Range: [-5.0, 5.0]. Default is 0.8.
+            (Numerical precision: 2.442002442002442e-3)
+
+        `t_ff`: float, optional
+        - Feed-forward torque reference (unit: N·m). Range: [-18.0, 18.0].
+          Default is
+            0.0. (Numerical precision: 6.274509803921569e-2 N·m)
+
+        Raises
+        ------
+        ValueError
+            If any parameter is outside the allowed range, or if `joint_index`
+            is not in {1, 2, 3, 4, 5, 6}.
+
+        Notes
+        -----
+        - This uses MIT move mode (move_mode=4, mit_mode=0xAD).
+        - Typical usage patterns:
+          - Velocity control: set `kp = 0`, `kd != 0`, command `v_des`.
+          - Torque control: set `kp = 0`, `kd = 0`, command `t_ff`.
+          - Position control: avoid `kd = 0` when `kp != 0` to reduce
+            oscillation risk.
+
+        Examples
+        --------
+        Hold joint 1 at a target position:
+        >>> robot.move_mit(
+        ...     joint_index=1, p_des=0.5, v_des=0.0, kp=10.0, kd=0.8, t_ff=0.0
+        ... )
+
+        Damped motion on joint 1 (increase kd for more damping):
+        >>> robot.move_mit(
+        ...     joint_index=1, p_des=0.0, v_des=0.0, kp=10.0, kd=2.0
+        ... )
+
+        Apply feed-forward torque on joint 1 (with low gains):
+        >>> robot.move_mit(
+        ...     joint_index=1, p_des=0.0, v_des=0.0, kp=2.0, kd=0.5, t_ff=1.5
+        ... )
+        """
+        if joint_index not in self._JOINT_INDEX_LIST[:-1]:
+            raise ValueError(
+                f"Joint index should be {self._JOINT_INDEX_LIST[:-1]}")
+        if p_des < -12.5 or p_des > 12.5:
+            raise ValueError(
+                "Position reference should be between -12.5 and 12.5")
+        if v_des < -45.0 or v_des > 45.0:
+            raise ValueError(
+                "Velocity reference should be between -45.0 and 45.0")
+        if kp < 0.0 or kp > 500.0:
+            raise ValueError(
+                "Proportional gain should be between 0.0 and 500.0")
+        if kd < -5.0 or kd > 5.0:
+            raise ValueError("Derivative gain should be between -5.0 and 5.0")
+        if t_ff < -18.0 or t_ff > 18.0:
+            raise ValueError(
+                "Torque reference should be between -18.0 and 18.0")
+
+        p_des = nc.FloatToUint(p_des, -12.5, 12.5, 16)
+        v_des = nc.FloatToUint(v_des, -45.0, 45.0, 12)
+        kp = nc.FloatToUint(kp, 0.0, 500.0, 12)
+        kd = nc.FloatToUint(kd, -5.0, 5.0, 12)
+        t_ff = nc.FloatToUint(t_ff, -8.0, 8.0, 8)
+
+        msg = self._parser._make_joint_mit_ctrl_msg(
+            joint_index=joint_index,
+            p_des=p_des,
+            v_des=v_des,
+            kp=kp,
+            kd=kd,
+            t_ff=t_ff,
+        )
+
+        # Set motion mode and send commands
+        self.set_motion_mode('mit')
+        self._send_msg(msg)
+
+    # -------------------------- Master-Slave --------------------------
+
+    def _set_master_slave_config(
+        self,
+        linkage_config: Literal[0x00, 0xFA, 0xFC] = 0x00,
+        feedback_offset: Literal[0x00, 0x10, 0x20] = 0x00,
+        ctrl_offset: Literal[0x00, 0x10, 0x20] = 0x00,
+        linkage_offset: Literal[0x00, 0x10, 0x20] = 0x00,
+    ):
+        """Set the master-slave configuration."""
+        if linkage_config not in [0x00, 0xFA, 0xFC]:
+            raise ValueError("Linkage config should be 0x00, 0xFA, 0xFC")
+        if feedback_offset not in [0x00, 0x10, 0x20]:
+            raise ValueError("Feedback offset should be 0x00, 0x10, 0x20")
+        if ctrl_offset not in [0x00, 0x10, 0x20]:
+            raise ValueError("Ctrl offset should be 0x00, 0x10, 0x20")
+        if linkage_offset not in [0x00, 0x10, 0x20]:
+            raise ValueError("Linkage offset should be 0x00, 0x10, 0x20")
+        msg = ArmMsgMasterSlaveModeConfig(
+            linkage_config, feedback_offset, ctrl_offset, linkage_offset
+        )
+        self._send_msg(msg)
+
+    def set_master_mode(self):
+        """Set the arm to the master arm zero force drag mode (master arm)."""
+        self._set_master_slave_config(linkage_config=0xFA)
+
+    def set_slave_mode(self):
+        """Set the arm to the slave arm controlled mode (slave arm)."""
+        self._set_master_slave_config(linkage_config=0xFC)
+
+    def move_master_to_home(self):
+        """Move the master arm to the home position (master arm).
+
+        Notes
+        -----
+        - This function will send a message to the controller to move the master
+          arm to the home position.
+        - After calling this function, you must call `restore_master_drag_mode`
+          to restore the master arm to the zero force drag mode.
+        """
+        msg = ArmMsgMasterArmMoveToHome(mode=1)
+        self._send_msg(msg)
+
+    def restore_master_drag_mode(self):
+        """Restore the master arm to the zero force drag mode (master arm)."""
+        msg = ArmMsgMasterArmMoveToHome(mode=0)
+        self._send_msg(msg)
+
+    def get_joint_ctrl_states(self):
+        """Get the joint control states.
+
+        Returns
+        -------
+        MessageAbstract[list[float]] | None
+            The joint control states.
+            If the joint control states is not available, return None.
+
+        Message
+        -------
+        `list[float]`: joint control states, unit: rad
+
+        Examples
+        --------
+        >>> jcs = robot.get_joint_ctrl_states()
+        >>> if jcs is not None:
+        >>>     print(jcs.msg)
+        >>>     print(jcs.hz, jcs.timestamp)
+        """
+        joint_ctrl_states: Optional[MessageAbstract[ArmMsgJointCtrl]] = None
+        if getattr(self, "_joint_ctrl_states", None) is None:
+            self._joint_ctrl_states = MessageAbstract(
+                msg=list([0.0] * self._JOINT_NUMS),
+                msg_type=ArmMsgJointCtrl.type_,
+            )
+        if getattr(self._parser, "joint_ctrl_feedback_12", None) is not None:
+            joint_ctrl_states = self._parser.joint_ctrl_feedback_12
+            self._joint_ctrl_states.msg[0] = joint_ctrl_states.msg.joint_1
+            self._joint_ctrl_states.msg[1] = joint_ctrl_states.msg.joint_2
+        if getattr(self._parser, "joint_ctrl_feedback_34", None) is not None:
+            joint_ctrl_states = self._parser.joint_ctrl_feedback_34
+            self._joint_ctrl_states.msg[2] = joint_ctrl_states.msg.joint_3
+            self._joint_ctrl_states.msg[3] = joint_ctrl_states.msg.joint_4
+        if getattr(self._parser, "joint_ctrl_feedback_56", None) is not None:
+            joint_ctrl_states = self._parser.joint_ctrl_feedback_56
+            self._joint_ctrl_states.msg[4] = joint_ctrl_states.msg.joint_5
+            self._joint_ctrl_states.msg[5] = joint_ctrl_states.msg.joint_6
+        if getattr(self._parser, "joint_ctrl_feedback_7", None) is not None:
+            joint_ctrl_states = self._parser.joint_ctrl_feedback_7
+            self._joint_ctrl_states.msg[6] = joint_ctrl_states.msg.joint_7
+        if joint_ctrl_states is not None:
+            self._joint_ctrl_states.timestamp = joint_ctrl_states.timestamp
+            self._joint_ctrl_states.hz = self._ctx.fps.get_fps(
+                joint_ctrl_states.msg_type
+            )
+            return self._joint_ctrl_states
+        else:
+            return None
+
+    # -------------------------- Other --------------------------
+
+    def get_joint_angle_vel_limits(
+        self,
+        joint_index: Literal[1, 2, 3, 4, 5, 6],
+        timeout: float = 1.0,
+        min_interval: float = 1.0,
+    ):
+        """Get the joint angle and velocity limits.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6]
+        - 1~6: get the message of the specified joint.
+
+        `timeout`: float, optional
+        - Timeout in seconds (see `Driver` docstring: Common conventions -> `timeout`).
+        - Default is 1.0.
+
+        `min_interval`: float, optional
+        - Minimum interval in seconds between two consecutive requests.
+        - Default is 1.0.
+
+        Returns
+        -------
+        MessageAbstract[ArmMsgFeedbackCurrentMotorAngleLimitMaxSpd] | None
+            The specified joint's limits, or None if not available.
+
+        Message
+        -------
+        `min_angle_limit`: Joint minimum angle limit, unit: rad
+
+        `max_angle_limit`: Joint maximum angle limit, unit: rad
+
+        `min_joint_spd`: Joint minimum velocity, unit: rad/s
+
+        `max_joint_spd`: Joint maximum velocity, unit: rad/s
+
+        Examples
+        --------
+        >>> limit = robot.get_joint_angle_vel_limits(1)
+        >>> if limit is not None:
+        >>>     print(limit.msg.min_angle_limit, limit.msg.max_angle_limit)
+        >>>     print(limit.msg.min_joint_spd, limit.msg.max_joint_spd)
+        >>> # Non-blocking: `robot.get_joint_angle_vel_limits(1, timeout=0.0)`
+        """
+        # Input validation
+        self._ctx._validate_timeout(timeout)
+        if joint_index not in self._JOINT_INDEX_LIST[:-1]:
+            raise ValueError(
+                f"Joint index should be {self._JOINT_INDEX_LIST[:-1]}")
+
+        def request() -> None:
+            self._send_msg(
+                self._MSG_SearchMotorMaxAngleSpdAccLimit(
+                    joint_index=joint_index, search_content=1
+                )
+            )
+
+        def is_ready() -> bool:
+            return (
+                getattr(self._parser, "motor_angle_limit_max_spd",
+                        None) is not None
+                and self._parser.motor_angle_limit_max_spd.msg.joints[
+                    joint_index - 1
+                ].min_angle_limit
+                is not None
+            )
+
+        def get_value() -> MessageAbstract[ArmMsgFeedbackCurrentMotorAngleLimitMaxSpd]:
+            self._parser.motor_angle_limit_max_spd.hz = self._ctx.fps.get_fps(
+                self._parser.motor_angle_limit_max_spd.msg_type
+            )
+            temp = copy.deepcopy(
+                self._parser.motor_angle_limit_max_spd.msg.joints[joint_index - 1]
+            )
+            temp = MessageAbstract(msg=temp, msg_type=temp.type_)
+            temp.hz = self._parser.motor_angle_limit_max_spd.hz
+            temp.timestamp = self._parser.motor_angle_limit_max_spd.timestamp
+            return temp
+
+        def clear() -> None:
+            self._parser.motor_angle_limit_max_spd.msg.joints[joint_index - 1].clear(
+            )
+
+        return self._ctx._request_and_get(
+            request=request,
+            is_ready=is_ready,
+            get_value=get_value,
+            clear=clear,
+            timeout=timeout,
+            min_interval=min_interval,
+            stamp_attr=f"joint_angle_vel:{joint_index}",
+        )
+
+    def get_joint_acc_limits(
+        self,
+        joint_index: Literal[1, 2, 3, 4, 5, 6],
+        timeout: float = 1.0,
+        min_interval: float = 1.0,
+    ):
+        """Get the joint acceleration limits.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6]
+        - 1~6: get the message of the specified joint.
+
+        `timeout`: float, optional
+        - Timeout in seconds (see `Driver` docstring: Common conventions -> `timeout`).
+        - Default is 1.0.
+
+        `min_interval`: float, optional
+        - Minimum interval in seconds between two consecutive requests.
+        - Default is 1.0.
+
+        Returns
+        -------
+        MessageAbstract[ArmMsgFeedbackCurrentMotorMaxAccLimit] | None
+            The specified joint's limits, or None if not available.
+
+        Message
+        -------
+        `max_joint_acc`: Joint maximum acceleration, unit: rad/s^2
+
+        Examples
+        --------
+        >>> limit = robot.get_joint_acc_limits(1)
+        >>> if limit is not None:
+        >>>     print(limit.msg.max_joint_acc)
+        >>> # Non-blocking: `robot.get_joint_acc_limits(1, timeout=0.0)`
+        """
+        # Input validation
+        self._ctx._validate_timeout(timeout)
+        if joint_index not in self._JOINT_INDEX_LIST[:-1]:
+            raise ValueError(
+                f"Joint index should be {self._JOINT_INDEX_LIST[:-1]}")
+
+        def request() -> None:
+            self._send_msg(
+                self._MSG_SearchMotorMaxAngleSpdAccLimit(
+                    joint_index=joint_index, search_content=2
+                )
+            )
+
+        def is_ready() -> bool:
+            return (
+                getattr(self._parser, "motor_max_acc_limit", None) is not None
+                and self._parser.motor_max_acc_limit.msg.joints[
+                    joint_index - 1
+                ].max_joint_acc
+                is not None
+            )
+
+        def get_value() -> MessageAbstract[ArmMsgFeedbackCurrentMotorMaxAccLimit]:
+            self._parser.motor_max_acc_limit.hz = self._ctx.fps.get_fps(
+                self._parser.motor_max_acc_limit.msg_type
+            )
+            temp = copy.deepcopy(
+                self._parser.motor_max_acc_limit.msg.joints[joint_index - 1]
+            )
+            temp = MessageAbstract(msg=temp, msg_type=temp.type_)
+            temp.hz = self._parser.motor_max_acc_limit.hz
+            temp.timestamp = self._parser.motor_max_acc_limit.timestamp
+            return temp
+
+        def clear() -> None:
+            self._parser.motor_max_acc_limit.msg.joints[joint_index - 1].clear()
+
+        return self._ctx._request_and_get(
+            request=request,
+            is_ready=is_ready,
+            get_value=get_value,
+            clear=clear,
+            timeout=timeout,
+            min_interval=min_interval,
+            stamp_attr=f"joint_acc:{joint_index}",
+        )
+
+    def get_ee_vel_acc_limits(self, timeout: float = 1.0, min_interval: float = 1.0):
+        """Get the end effector velocity and acceleration limits.
+
+        Parameters
+        ----------
+        `timeout`: float, optional
+        - Timeout in seconds (see `Driver` docstring: Common conventions -> `timeout`).
+        - Default is 1.0.
+
+        `min_interval`: float, optional
+        - Minimum interval in seconds between two consecutive requests.
+        - Default is 1.0.
+
+        Returns
+        -------
+        MessageAbstract[ArmMsgFeedbackCurrentEndVelAccParam] | None
+            The end effector velocity and acceleration limits.
+            If the end effector velocity and acceleration limits is not available,
+            return None.
+
+        Message
+        -------
+        `end_max_linear_vel`: End effector maximum linear velocity, unit: m/s
+
+        `end_max_angular_vel`: End effector maximum angular velocity, unit: rad/s
+
+        `end_max_linear_acc`: End effector maximum linear acceleration, unit: m/s^2
+
+        `end_max_angular_acc`: End effector maximum angular acceleration, unit: rad/s^2
+
+        Examples
+        --------
+        >>> limit = robot.get_ee_vel_acc_limits()
+        >>> if limit is not None:
+        >>>     print(limit.msg.end_max_linear_vel, limit.msg.end_max_angular_vel)
+        >>>     print(limit.msg.end_max_linear_acc, limit.msg.end_max_angular_acc)
+        >>> # Non-blocking: `robot.get_ee_vel_acc_limits(timeout=0.0)`
+        """
+        def request() -> None:
+            self._send_msg(self._MSG_ParamEnquiryAndConfig(param_enquiry=1))
+
+        def is_ready() -> bool:
+            return (
+                getattr(self._parser, "end_vel_acc_param", None) is not None
+                and self._parser.end_vel_acc_param.msg.end_max_linear_vel is not None
+            )
+
+        def get_value() -> MessageAbstract[ArmMsgFeedbackCurrentEndVelAccParam]:
+            self._parser.end_vel_acc_param.hz = self._ctx.fps.get_fps(
+                self._parser.end_vel_acc_param.msg_type
+            )
+            return copy.deepcopy(self._parser.end_vel_acc_param)
+
+        def clear() -> None:
+            self._parser.end_vel_acc_param.msg.clear()
+
+        res = self._ctx._request_and_get(
+            request=request,
+            is_ready=is_ready,
+            get_value=get_value,
+            clear=clear,
+            timeout=timeout,
+            min_interval=min_interval,
+            stamp_attr="ee_vel_acc",
+        )
+        return res
+
+    def get_crash_protection_rating(
+        self, timeout: float = 1.0, min_interval: float = 1.0
+    ):
+        """Get the crash protection rating.
+
+        Parameters
+        ----------
+        `timeout`: float, optional
+        - Timeout in seconds (see `Driver` docstring: Common conventions -> `timeout`).
+        - Default is 1.0.
+
+        `min_interval`: float, optional
+        - Minimum interval in seconds between two consecutive requests.
+        - Default is 1.0.
+
+        Returns
+        -------
+        MessageAbstract[list[int]] | None
+            The crash protection rating.
+            If the crash protection rating is not available, return None.
+
+        Message
+        -------
+        `list[int]`: Collision protection level for each joint.
+        - 0: No collision detection
+        - 1-8: Collision detection thresholds increase (higher values represent more
+            sensitive thresholds)
+
+        Examples
+        --------
+        >>> rating = robot.get_crash_protection_rating()
+        >>> if rating is not None:
+        >>>     print(rating.msg)
+        >>>     print(rating.hz, rating.timestamp)
+        """
+        def request() -> None:
+            self._send_msg(self._MSG_ParamEnquiryAndConfig(param_enquiry=2))
+
+        def is_ready() -> bool:
+            return (
+                getattr(self._parser, "crash_protection_rating",
+                        None) is not None
+                and self._parser.crash_protection_rating.msg.joint_1 is not None
+            )
+
+        def get_value() -> MessageAbstract[List[int]]:
+            self._parser.crash_protection_rating.hz = self._ctx.fps.get_fps(
+                self._parser.crash_protection_rating.msg_type
+            )
+            temp: MessageAbstract[List[int]] = copy.deepcopy(
+                self._parser.crash_protection_rating)
+            temp.msg = [
+                getattr(temp.msg, f"joint_{i}") for i in range(1, self._JOINT_NUMS + 1)
+            ]
+            return temp
+
+        def clear() -> None:
+            self._parser.crash_protection_rating.msg.clear()
+
+        return self._ctx._request_and_get(
+            request=request,
+            is_ready=is_ready,
+            get_value=get_value,
+            clear=clear,
+            timeout=timeout,
+            min_interval=min_interval,
+            stamp_attr="crash_protection_rating",
+        )
+
+    def calibrate_joint(
+        self, joint_index: Literal[1, 2, 3, 4, 5, 6, 255] = 255, timeout: float = 1.0
+    ):
+        """Calibrate the joint.
+
+        This function will set the current position as the joint zero point.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6, 255]
+        - 1~6: calibrate the specified joint.
+        - 255: calibrate all joints.
+
+        `timeout`: float, optional
+        - Timeout in seconds. Default is 1.0.
+
+        Returns
+        -------
+        bool
+            True if the joint is calibrated, False otherwise.
+
+        Examples
+        --------
+        >>> robot.disable(1)  # call repeatedly until True if needed
+        >>> ok = robot.calibrate_joint(1)
+        >>> if ok:
+        >>>     robot.enable(1)
+        >>> # e.g. move home: robot.move_j([0.0] * 6)
+        """
+        # Input validation
+        self._ctx._validate_timeout(timeout)
+        if joint_index not in self._JOINT_INDEX_LIST:
+            raise ValueError(f"Joint index should be {self._JOINT_INDEX_LIST}")
+
+        if joint_index == 255:
+            return self._all_joints_bool(lambda i: self.calibrate_joint(i))
+        else:
+            # Clear previous response
+            self._clear_resp_set_instruction()
+
+            def request() -> None:
+                self._send_msg(
+                    self._MSG_JointConfig(
+                        joint_index=joint_index,
+                        set_motor_current_pos_as_zero=0xAE
+                    )
+                )
+
+            def get_value() -> bool:
+                return self._parser.resp_set_instruction.msg.is_set_zero_successfully == 1
+
+            res = self._resp_set_instruction_get(
+                request=request,
+                get_value=get_value,
+                instruction_index=0x75,
+                timeout=timeout,
+                stamp_key=f"calibrate_joint:{joint_index}",
+            )
+            return bool(res)
+
+    def set_joint_angle_vel_limits(
+        self,
+        joint_index: Literal[1, 2, 3, 4, 5, 6, 255] = 255,
+        min_angle_limit: Optional[float] = None,
+        max_angle_limit: Optional[float] = None,
+        max_joint_spd: Optional[float] = None,
+        timeout: float = 1.0,
+    ):
+        """Set the joint angle and velocity limits.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6, 255]
+        - 1~6: set the joint angle and velocity limits of the specified joint.
+        - 255: set the joint angle and velocity limits of all joints.
+
+        `min_angle_limit`: float
+        - The minimum angle limit in rad.
+            (Numerical precision: 1.74532925199e-3 rad)
+
+        `max_angle_limit`: float
+        - The maximum angle limit in rad.
+            (Numerical precision: 1.74532925199e-3 rad)
+
+        `max_joint_spd`: float
+        - The maximum joint speed in rad/s.
+            (Numerical precision: 1e-2 rad/s)
+
+        `timeout`: float, optional
+        - Timeout in seconds. Default is 1.0.
+
+        Returns
+        -------
+        bool
+            True if the joint angle and velocity limits are set successfully,
+            False otherwise.
+
+        Examples
+        --------
+        >>> success = robot.set_joint_angle_vel_limits(
+        ...     joint_index=1, min_angle_limit=-2.618, max_angle_limit=2.618
+        ... )
+        >>> if success:
+        >>>     print("Joint angle and velocity limits set successfully")
+
+        >>> success = robot.set_joint_angle_vel_limits(joint_index=1, max_joint_spd=3.0)
+        >>> if success:
+        >>>     print("Joint angle and velocity limits set successfully")
+        """
+        # Input validation
+        self._ctx._validate_timeout(timeout)
+        if joint_index not in self._JOINT_INDEX_LIST:
+            raise ValueError(f"Joint index should be {self._JOINT_INDEX_LIST}")
+        # if max_joint_spd is not None and (
+        #     max_joint_spd < 0.0 or max_joint_spd > 3.0
+        # ):
+        #     raise ValueError("Maximum joint speed should be between 0.0 and 3.0")
+
+        if joint_index == 255:
+            return self._all_joints_bool(
+                lambda i: self.set_joint_angle_vel_limits(
+                    i, min_angle_limit, max_angle_limit, max_joint_spd
+                )
+            )
+        else:
+            # Clear previous response
+            self._clear_resp_set_instruction()
+
+            # Prepare control messages
+            min_angle_limit = (
+                0x7FFF
+                if min_angle_limit is None
+                else round(min_angle_limit * RAD2DEG * 1e1)
+            )
+            max_angle_limit = (
+                0x7FFF
+                if max_angle_limit is None
+                else round(max_angle_limit * RAD2DEG * 1e1)
+            )
+            max_joint_spd = (
+                0x7FFF if max_joint_spd is None else round(
+                    abs(max_joint_spd) * 1e2)
+            )
+
+            def request() -> None:
+                self._send_msg(
+                    self._MSG_MotorAngleLimitMaxSpdSet(
+                        joint_index,
+                        max_angle_limit,
+                        min_angle_limit,
+                        max_joint_spd
+                    )
+                )
+
+            def check() -> bool:
+                res = self.get_joint_angle_vel_limits(joint_index)
+                return not (
+                    res is None
+                    or min_angle_limit != 0x7FFF
+                    and min_angle_limit
+                    != round(res.msg.min_angle_limit * RAD2DEG * 1e1)
+                    or max_angle_limit != 0x7FFF
+                    and max_angle_limit
+                    != round(res.msg.max_angle_limit * RAD2DEG * 1e1)
+                    or max_joint_spd != 0x7FFF
+                    and max_joint_spd != round(abs(res.msg.max_joint_spd) * 1e2)
+                )
+
+            res = self._ack_and_check_set(
+                request=request,
+                instruction_index=0x74,
+                check=check,
+                timeout=timeout,
+                stamp_key=f"set_joint_angle_vel_limits:{joint_index}",
+            )
+            return bool(res)
+
+    def set_joint_acc_limits(
+        self,
+        joint_index: Literal[1, 2, 3, 4, 5, 6, 255] = 255,
+        max_joint_acc: Optional[float] = None,
+        timeout: float = 1.0,
+    ):
+        """Set the joint acceleration limits.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6, 255]
+        - 1~6: set the joint acceleration limits of the specified joint.
+        - 255: set the joint acceleration limits of all joints.
+
+        `max_joint_acc`: float
+        - The maximum joint acceleration in rad/s^2.
+            (Numerical precision: 1e-2 rad/s^2)
+
+        `timeout`: float, optional
+        - Timeout in seconds. Default is 1.0.
+
+        Returns
+        -------
+        bool
+            True if the maximum joint acceleration is set successfully, False
+            otherwise.
+        """
+        # Input validation
+        self._ctx._validate_timeout(timeout)
+        if joint_index not in self._JOINT_INDEX_LIST:
+            raise ValueError(f"Joint index should be {self._JOINT_INDEX_LIST}")
+        # if max_joint_acc is not None and (
+        #     max_joint_acc < 0.0 or max_joint_acc > 12.56
+        # ):
+        #     raise ValueError(
+        #         "Maximum joint acceleration should be between 0.0 and 12.56"
+        #     )
+
+        if joint_index == 255:
+            return self._all_joints_bool(lambda i: self.set_joint_acc_limits(i, max_joint_acc))
+        else:
+            # Clear previous response
+            self._clear_resp_set_instruction()
+
+            # Prepare control messages
+            max_joint_acc = (
+                0x7FFF if max_joint_acc is None else round(
+                    abs(max_joint_acc) * 1e2)
+            )
+
+            def request() -> None:
+                self._send_msg(
+                    self._MSG_JointConfig(
+                        joint_index=joint_index,
+                        acc_param_config_is_effective_or_not=0xAE,
+                        max_joint_acc=max_joint_acc,
+                    )
+                )
+
+            def check() -> bool:
+                res = self.get_joint_acc_limits(joint_index)
+                return not (
+                    res is None
+                    or max_joint_acc != 0x7FFF
+                    and max_joint_acc != round(abs(res.msg.max_joint_acc) * 1e2)
+                )
+
+            res = self._ack_and_check_set(
+                request=request,
+                instruction_index=0x75,
+                check=check,
+                timeout=timeout,
+                stamp_key=f"set_joint_acc_limits:{joint_index}",
+            )
+            return bool(res)
+
+    def set_ee_load(
+        self,
+        load: Literal['empty', 'half', 'full'] = 'empty',
+        timeout: float = 1.0
+    ):
+        """Set the end effector load.
+
+        Parameters
+        ----------
+        `load`: Literal['empty', 'half', 'full']
+        - `EE_LOAD.EMPTY`: empty load
+        - `EE_LOAD.HALF`: half load
+        - `EE_LOAD.FULL`: full load
+
+        `timeout`: float, optional
+        - Timeout in seconds. Default is 1.0.
+
+        Returns
+        -------
+        bool
+            True if an ACK/response is received within `timeout`, False otherwise.
+
+            Notes
+            -----
+            See `Driver` docstring: Common conventions -> `set_*` return semantics.
+
+        Examples
+        --------
+        >>> # 1. Set the end effector load to empty
+        >>> success = robot.set_ee_load(robot.EE_LOAD.EMPTY)
+        >>> if success:
+        >>>     print("End effector load set successfully")
+        >>>
+        >>> # 2. Set the end effector load to half
+        >>> success = robot.set_ee_load(robot.EE_LOAD.HALF)
+        >>> if success:
+        >>>     print("End effector load set successfully")
+        >>>
+        >>> # 3. Set the end effector load to full
+        >>> success = robot.set_ee_load(robot.EE_LOAD.FULL)
+        >>> if success:
+        >>>     print("End effector load set successfully")
+        """
+        # Input validation
+        self._ctx._validate_timeout(timeout)
+        if load not in self.EE_LOAD._VALUES:
+            raise ValueError(
+                f"Load should be in EE_LOAD: {self.EE_LOAD._VALUES}")
+
+        load_code = self.EE_LOAD._LOAD_CODE[load]
+
+        # Clear previous response
+        self._clear_resp_set_instruction()
+
+        def request() -> None:
+            self._send_msg(
+                self._MSG_ParamEnquiryAndConfig(
+                    end_load_param_setting_effective=0xAE, set_end_load=load_code
+                )
+            )
+
+        return self._ack_only_set(
+            request=request,
+            instruction_index=0x77,
+            timeout=timeout,
+            stamp_key="set_ee_load",
+        )
+
+    def set_ee_vel_acc_limits(
+        self,
+        max_linear_vel: Optional[float] = None,
+        max_angular_vel: Optional[float] = None,
+        max_linear_acc: Optional[float] = None,
+        max_angular_acc: Optional[float] = None,
+        timeout: float = 1.0,
+    ):
+        """Set the end effector velocity and acceleration limits.
+
+        Parameters
+        ----------
+        `max_linear_vel`: float
+        - The maximum linear velocity in m/s.
+            (Numerical precision: 1e-3 m/s)
+
+        `max_angular_vel`: float
+        - The maximum angular velocity in rad/s.
+            (Numerical precision: 1e-3 rad/s)
+
+        `max_linear_acc`: float
+        - The maximum linear acceleration in m/s^2.
+            (Numerical precision: 1e-3 m/s^2)
+
+        `max_angular_acc`: float
+        - The maximum angular acceleration in rad/s^2.
+            (Numerical precision: 1e-3 rad/s^2)
+
+        `timeout`: float, optional
+        - Timeout in seconds. Default is 1.0.
+
+        Returns
+        -------
+        bool
+            True if the end effector velocity and acceleration limits are set
+            successfully, False otherwise.
+
+        Examples
+        --------
+        >>> success = robot.set_ee_vel_acc_limits(
+        ...     max_linear_vel=0.5,
+        ...     max_angular_vel=0.13,
+        ...     max_linear_acc=0.8,
+        ...     max_angular_acc=0.2,
+        ... )
+        >>> if success:
+        >>>     print("End effector velocity and acceleration limits set successfully")
+        """
+        # Input validation
+        self._ctx._validate_timeout(timeout)
+        # if max_linear_vel is not None and (
+        #     max_linear_vel < 0.0 or max_linear_vel > 3.0
+        # ):
+        #     raise ValueError("Maximum linear velocity should be between 0.0 and 3.0")
+
+        # Clear previous response
+        self._clear_resp_set_instruction()
+
+        # Prepare control messages
+        max_linear_vel = (
+            0x7FFF if max_linear_vel is None else round(
+                abs(max_linear_vel) * 1e3)
+        )
+        max_angular_vel = (
+            0x7FFF if max_angular_vel is None else round(
+                abs(max_angular_vel) * 1e3)
+        )
+        max_linear_acc = (
+            0x7FFF if max_linear_acc is None else round(
+                abs(max_linear_acc) * 1e3)
+        )
+        max_angular_acc = (
+            0x7FFF if max_angular_acc is None else round(
+                abs(max_angular_acc) * 1e3)
+        )
+
+        def request() -> None:
+            self._send_msg(
+                self._MSG_EndVelAccParamConfig(
+                    max_linear_vel,
+                    max_angular_vel,
+                    max_linear_acc,
+                    max_angular_acc
+                )
+            )
+
+        def check() -> bool:
+            res = self.get_ee_vel_acc_limits()
+            return not (
+                res is None
+                or max_linear_vel != 0x7FFF
+                and max_linear_vel != round(abs(res.msg.end_max_linear_vel) * 1e3)
+                or max_angular_vel != 0x7FFF
+                and max_angular_vel != round(abs(res.msg.end_max_angular_vel) * 1e3)
+                or max_linear_acc != 0x7FFF
+                and max_linear_acc != round(abs(res.msg.end_max_linear_acc) * 1e3)
+                or max_angular_acc != 0x7FFF
+                and max_angular_acc != round(abs(res.msg.end_max_angular_acc) * 1e3)
+            )
+
+        return self._ack_and_check_set(
+            request=request,
+            instruction_index=0x79,
+            check=check,
+            timeout=timeout,
+            stamp_key="set_ee_vel_acc_limits",
+        )
+
+    def set_crash_protection_rating(
+        self,
+        joint_index: Literal[1, 2, 3, 4, 5, 6, 255] = 255,
+        rating: Literal[0, 1, 2, 3, 4, 5, 6, 7, 8] = 0,
+        timeout: float = 1.0,
+    ):
+        """Set the crash protection rating.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6, 255]
+        - 1~6: set the crash protection rating of the specified joint.
+        - 255: set the crash protection rating of all joints.
+
+        `rating`: Literal[0, 1, 2, 3, 4, 5, 6, 7, 8]
+        - 0~8: set the crash protection rating of the specified joint.
+
+        `timeout`: float, optional
+        - Timeout in seconds. Default is 1.0.
+
+        Returns
+        -------
+        bool
+            True if the crash protection rating is set successfully, False otherwise.
+
+        Examples
+        --------
+        Set the crash protection rating of joint 1 to 1:
+        >>> success = robot.set_crash_protection_rating(joint_index=1, rating=1)
+        >>> if success:
+        >>>     print("Crash protection rating set successfully")
+
+        Set the crash protection rating of all joints to 0:
+        >>> success = robot.set_crash_protection_rating(joint_index=255, rating=0)
+        >>> if success:
+        >>>     print("Crash protection rating set successfully")
+        """
+        # Input validation
+        self._ctx._validate_timeout(timeout)
+        if joint_index not in self._JOINT_INDEX_LIST:
+            raise ValueError(f"Joint index should be {self._JOINT_INDEX_LIST}")
+        if rating < 0 or rating > 8:
+            raise ValueError(
+                "Crash protection rating should be between 0 and 8")
+
+        # Clear previous response
+        self._clear_resp_set_instruction()
+
+        # Get current crash protection rating
+        current_rating = self.get_crash_protection_rating()
+        if current_rating is None:
+            return False
+
+        if joint_index == 255:
+            joints = [rating] * self._JOINT_NUMS
+        else:
+            joints = current_rating.msg.copy()
+            joints[joint_index - 1] = rating
+
+        def request() -> None:
+            self._send_msg(self._MSG_CrashProtectionRatingConfig(*joints))
+
+        def check() -> bool:
+            res = self.get_crash_protection_rating()
+            return not (res is None or res.msg != joints)
+
+        return self._ack_and_check_set(
+            request=request,
+            instruction_index=0x7A,
+            check=check,
+            timeout=timeout,
+            stamp_key="set_crash_protection_rating",
+        )
+
+    def set_ee_vel_acc_limits_to_default(self, timeout: float = 1.0):
+        """Set the end effector velocity and acceleration limits to default.
+
+        Parameters
+        ----------
+        `timeout`: float, optional
+        - Timeout in seconds. Default is 1.0.
+
+        Returns
+        -------
+        bool
+            True if an ACK/response is received within `timeout`, False otherwise.
+
+            Notes
+            -----
+            See `Driver` docstring: Common conventions -> `set_*` return semantics.
+
+        Examples
+        --------
+        >>> success = robot.set_ee_vel_acc_limits_to_default()
+        >>> if success:
+        >>>     print(
+        ...         "End effector velocity and acceleration limits set to default "
+        ...         "successfully"
+        ...     )
+        """
+        # Input validation
+        self._ctx._validate_timeout(timeout)
+
+        # Clear previous response
+        self._clear_resp_set_instruction()
+
+        def request() -> None:
+            self._send_msg(self._MSG_ParamEnquiryAndConfig(param_setting=1))
+
+        return self._ack_only_set(
+            request=request,
+            instruction_index=0x77,
+            timeout=timeout,
+            stamp_key="set_ee_vel_acc_limits_to_default",
+        )
+
+    def set_joint_angle_vel_acc_limits_to_default(self, timeout: float = 1.0):
+        """Set the joint angle, velocity and acceleration limits to default.
+
+        Parameters
+        ----------
+        `timeout`: float, optional
+        - Timeout in seconds. Default is 1.0.
+
+        Returns
+        -------
+        bool
+            True if an ACK/response is received within `timeout`, False otherwise.
+
+            Notes
+            -----
+            See `Driver` docstring: Common conventions -> `set_*` return semantics.
+
+        Examples
+        --------
+        >>> success = robot.set_joint_angle_vel_acc_limits_to_default()
+        >>> if success:
+        >>>     print(
+        ...         "Joint angle, velocity and acceleration limits set to default "
+        ...         "successfully"
+        ...     )
+        """
+        # Input validation
+        self._ctx._validate_timeout(timeout)
+
+        # Clear previous response
+        self._clear_resp_set_instruction()
+
+        def request() -> None:
+            self._send_msg(self._MSG_ParamEnquiryAndConfig(param_setting=2))
+
+        return self._ack_only_set(
+            request=request,
+            instruction_index=0x77,
+            timeout=timeout,
+            stamp_key="set_joint_angle_vel_acc_limits_to_default",
+        )
+
+    def set_joint_ee_vel_acc_period_feedback(
+        self, enable: bool = False, timeout: float = 1.0
+    ):
+        """Set the joint end effector velocity and acceleration period
+        feedback.
+
+        In the lower-level main control, this function has been deprecated, but
+        it will still periodically feedback data. The feedback data is all 0
+        and has no meaning. It is recommended to disable periodic feedback
+        through this function.
+
+        Parameters
+        ----------
+        `enable`: bool
+        - True: enable the joint end effector velocity and acceleration period
+            feedback.
+        - False: disable the joint end effector velocity and acceleration period
+            feedback.
+
+        `timeout`: float, optional
+        - Timeout in seconds. Default is 1.0.
+
+        Returns
+        -------
+        bool
+            True if an ACK/response is received within `timeout`, False
+            otherwise.
+
+            Notes
+            -----
+            See `Driver` docstring: Common conventions -> `set_*` return
+            semantics.
+            This API does not provide a direct read-back verifier; observe
+            periodic feedback frames to confirm behavior.
+
+            A practical way to verify is using `candump` and checking whether
+            CAN IDs `0x481~0x486` appear on the bus (these are the `0x48x`
+            periodic frames).
+            For example, run:
+
+                candump can0,481:7FF,482:7FF,483:7FF, \\
+                    484:7FF,485:7FF,486:7FF
+
+            before/after calling this API and compare the output.
+        """
+        # Input validation
+        self._ctx._validate_timeout(timeout)
+
+        # Clear previous response
+        self._clear_resp_set_instruction()
+
+        def request() -> None:
+            self._send_msg(
+                self._MSG_ParamEnquiryAndConfig(
+                    data_feedback_0x48x=1 if enable else 2)
+            )
+
+        return self._ack_only_set(
+            request=request,
+            instruction_index=0x77,
+            timeout=timeout,
+            stamp_key="set_joint_ee_vel_acc_period_feedback",
+        )

@@ -1,0 +1,30 @@
+{
+    "robot": "nero",
+    "comm":{
+        "type":"can",
+        "can":{
+            "channel": "can0",
+            "interface": "socketcan",
+            "bitrate": 1000000,
+            "enable_check_can": false,
+            "auto_connect": false,
+            "timeout": 1.0
+        }
+    },
+    "log":{
+        "log_level":"DEBUG",
+        "log_path":""
+    },
+    "joint_limit":{
+        "j1":[-3.141593, 3.141593],
+        "j2":[-3.141593, 3.141593],
+        "j3":[-3.141593, 3.141593],
+        "j4":[-3.141593, 3.141593],
+        "j5":[-3.141593, 3.141593],
+        "j6":[-3.141593, 3.141593],
+        "j7":[-3.141593, 3.141593]
+    },
+    "end_effector":{
+        "type":"revo2"
+    }
+}

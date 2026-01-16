@@ -1,0 +1,12 @@
+.VSCodeCounter
+.vscode
+__pycache__
+*.7z
+*.zip
+*.tar
+*.egg-info
+dist
+build
+*.so
+temp
+.VSCodeCounter

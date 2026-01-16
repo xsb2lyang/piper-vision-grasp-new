@@ -1,0 +1,8 @@
+include LICENSE
+include *.sh
+include *.MD
+include pyAgxArm/*.MD
+include pyAgxArm/*.sh
+include pyAgxArm/LICENSE
+
+recursive-include pyAgxArm/asserts *

@@ -1,0 +1,34 @@
+{
+    "robot": "piper",
+    "comm":{
+        "type":"can",
+        "can":{
+            "channel": "can0",
+            "interface": "socketcan",
+            "bitrate": 1000000,
+            "enable_check_can": false,
+            "auto_connect": false,
+            "timeout": 1.0
+        }
+    },
+    "log":{
+        "log_level":"DEBUG",
+        "log_path":""
+    },
+    "joint_limit":{
+        "j1":[-2.617994, 2.617994],
+        "j2":[0.0, 3.141593],
+        "j3":[-2.967060, 0.0],
+        "j4":[-1.745330, 1.745330],
+        "j5":[-1.221730, 1.221730],
+        "j6":[-2.094396, 2.094396]
+    },
+    "end_effector":{
+        "type":"gripper",
+        "gripper":{
+            "70":{
+                "limit":[0, 0.07]
+            }
+        }
+    }
+}
