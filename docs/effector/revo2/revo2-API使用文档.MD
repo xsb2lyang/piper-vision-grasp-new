@@ -498,7 +498,7 @@ position_time_ctrl(
 
 |名称|类型|说明|
 |---|---|---|
-|mode|str|控制模式：`pos` 位置（0~100）；`time` 时间（单位 10ms，范围 0~255）|
+|mode|str|控制模式：`pos` 位置（0 ~ 100）；`time` 时间（单位 10ms，范围 0~255）|
 |thumb_tip~pinky_finger|int|在 `pos` 模式下为目标位置；在 `time` 模式下为目标时间|
 
 - 使用示例:
