@@ -522,6 +522,5 @@ robot.connect()
 
 # 拇指尖移动到位置 100，然后设置 2 秒到位（200 * 10ms）
 end_effector.position_time_ctrl(mode="pos", thumb_tip=100)
-time.sleep(0.02)  # 建议短间隔，确保 < 50ms
 end_effector.position_time_ctrl(mode="time", thumb_tip=200)
 ```
