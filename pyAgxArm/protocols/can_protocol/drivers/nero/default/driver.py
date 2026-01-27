@@ -91,10 +91,9 @@ class Driver(ArmDriverAbstract):
 
     def _deal_move_p_msgs(self, pose: List[float]):
         """Get pose control messages."""
-        Validator.validate_pose6(
+        pose = Validator.clamp_pose6(
             pose,
-            name="flange_pose",
-            validate_angle_limits=True
+            name="flange_pose"
         )
 
         # Radians to degrees conversion
@@ -124,11 +123,9 @@ class Driver(ArmDriverAbstract):
         joints = Validator.clamp_joints(
             joints,
             length=self._JOINT_NUMS,
-            name="joints",
             joints_limit=list(
                 self._config.get(
-                    "joint_limits",
-                    {}
+                    "joint_limits", {}
                 ).values()
             )
         )
@@ -188,15 +185,9 @@ class Driver(ArmDriverAbstract):
                 joint_angles.msg_type)
             if Validator.is_joints(
                 self._joint_angles.msg,
-                length=self._JOINT_NUMS,
-                name="joint_angles",
+                length=self._JOINT_NUMS
             ):
                 return self._joint_angles
-            else:
-                print(
-                    "Warning: Invalid joint angles received: "
-                    f"{self._joint_angles.msg}"
-                )
         return None
 
     def get_flange_pose(self):
@@ -257,15 +248,9 @@ class Driver(ArmDriverAbstract):
             self._end_pose.hz = self._ctx.fps.get_fps(end_pose.msg_type)
             if Validator.is_pose6(
                 self._end_pose.msg,
-                name="flange_pose",
-                validate_angle_limits=True
+                name="flange_pose"
             ):
                 return self._end_pose
-            else:
-                print(
-                    "Warning: Invalid end pose received: "
-                    f"{self._end_pose.msg}"
-                )
         return None
 
     def get_arm_status(self):

@@ -168,10 +168,9 @@ class Driver(ArmDriverAbstract):
 
     def _deal_move_p_msgs(self, pose: List[float]):
         """Get pose control messages."""
-        Validator.validate_pose6(
+        pose = Validator.clamp_pose6(
             pose,
-            name="flange_pose",
-            validate_angle_limits=True
+            name="flange_pose"
         )
 
         # Radians to degrees conversion
@@ -201,7 +200,6 @@ class Driver(ArmDriverAbstract):
         joints = Validator.clamp_joints(
             joints,
             length=self._JOINT_NUMS,
-            name="joints",
             joints_limit=list(
                 self._config.get(
                     "joint_limits", {}
@@ -380,15 +378,9 @@ class Driver(ArmDriverAbstract):
                 joint_angles.msg_type)
             if Validator.is_joints(
                 self._joint_angles.msg,
-                length=self._JOINT_NUMS,
-                name="joint_angles",
+                length=self._JOINT_NUMS
             ):
                 return self._joint_angles
-            else:
-                print(
-                    "Warning: Invalid joint angles received: "
-                    f"{self._joint_angles.msg}"
-                )
         return None
 
     def get_flange_pose(self):
@@ -449,15 +441,9 @@ class Driver(ArmDriverAbstract):
             self._end_pose.hz = self._ctx.fps.get_fps(end_pose.msg_type)
             if Validator.is_pose6(
                 self._end_pose.msg,
-                name="flange_pose",
-                validate_angle_limits=True
+                name="flange_pose"
             ):
                 return self._end_pose
-            else:
-                print(
-                    "Warning: Invalid end pose received: "
-                    f"{self._end_pose.msg}"
-                )
         return None
 
     def get_arm_status(self):
@@ -1284,18 +1270,23 @@ class Driver(ArmDriverAbstract):
             raise ValueError(
                 "Torque reference should be between -18.0 and 18.0")
 
-        limit = self._config.get(
+        limits = self._config.get(
             "joint_limits", {}
         ).get(f"joint{joint_index}", None)
 
-        if limit is not None:
-            p_des = Validator.clamp(p_des, limit[0], limit[1])
+        if limits is not None:
+            lower_limit = limits[0]
+            upper_limit = limits[1]
         else:
-            p_des = Validator.clamp(
-                p_des,
-                -Validator.REF_MAX_ANGLE,
-                Validator.REF_MAX_ANGLE,
+            lower_limit = -Validator.REF_MAX_ANGLE
+            upper_limit = Validator.REF_MAX_ANGLE
+        
+        if not Validator.is_within_limit(p_des, lower_limit, upper_limit):
+            print(
+                f"Warning: Desired position {p_des} rad is outside "
+                f"joint {joint_index} limits [{lower_limit}, {upper_limit}] rad. "
             )
+            p_des = Validator.clamp(p_des, lower_limit, upper_limit)
 
         p_des = nc.FloatToUint(p_des, -12.5, 12.5, 16)
         v_des = nc.FloatToUint(v_des, -45.0, 45.0, 12)

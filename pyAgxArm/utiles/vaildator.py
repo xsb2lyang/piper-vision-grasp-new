@@ -80,20 +80,19 @@ class Validator:
     @staticmethod
     def is_joints(
         joints: list,
-        length: int,
-        name: str = "joints"
+        length: int
     ) -> bool:
         """Validate a list of joint angles in radians.
         
         - Angle limits: [-2pi, 2pi]
         """
-        Validator.validate_list(joints, length, name)
+        Validator.validate_list(joints, length, "joints")
 
         min_val = Validator.REF_MIN_ANGLE
         max_val = Validator.REF_MAX_ANGLE
 
         for i, j in enumerate(joints):
-            Validator.validate_numeric(j, f"{name}[{i}]")
+            Validator.validate_numeric(j, f"joints[{i}]")
             if not Validator.is_within_limit(
                 j, min_val, max_val, 0.0
             ):
@@ -104,18 +103,19 @@ class Validator:
     def clamp_joints(
         joints: list,
         length: int,
-        name: str = "joints",
         joints_limit: list = []
     ) -> list:
-        """Clamp joints within given limits. (including normalization)
+        """Clamp joints within given limits.
 
         - If `joints_limit` is empty, use default limits: [-2pi, 2pi]
         - joints_limit: list of [min, max] pairs for each joint
         """
-        Validator.validate_list(joints, length, name)
+        Validator.validate_list(joints, length, "joints")
 
         def temp_clamp(i, j, min_val, max_val):
             Validator.validate_numeric(j, f"joints[{i}]")
+            if not Validator.is_within_limit(j, min_val, max_val):
+                print(f"Warning: joints[{i}] = {j} must be within [{min_val}, {max_val}] (unit: rad)")
             return Validator.clamp(j, min_val, max_val)
 
         clamped = []
@@ -135,14 +135,12 @@ class Validator:
     @staticmethod
     def is_pose6(
         pose: list,
-        name: str = "pose",
-        validate_angle_limits: bool = True
+        name: str = "pose"
     ) -> bool:
         """Validate a pose6 list: [x, y, z, roll, pitch, yaw].
 
         - `x/y/z`: meters
         - `roll/pitch/yaw`: radians
-        - Angle limits (if enabled):
             - roll, yaw in `[-pi, pi]`
             - pitch in `[-pi/2, pi/2]`
         """
@@ -151,27 +149,23 @@ class Validator:
         for i, val in enumerate(pose):
             Validator.validate_numeric(val, f"{name}[{i}]")
         
-        if validate_angle_limits:
-            roll, pitch, yaw = pose[3], pose[4], pose[5]
-            if abs(roll) > math.pi:
-                return False
-            if abs(yaw) > math.pi:
-                return False
-            if abs(pitch) > (math.pi / 2.0):
-                return False
+        if abs(pose[3]) > math.pi:
+            return False
+        if abs(pose[4]) > (math.pi / 2.0):
+            return False
+        if abs(pose[5]) > math.pi:
+            return False
         return True
 
     @staticmethod
-    def validate_pose6(
+    def clamp_pose6(
         pose: list,
-        name: str = "pose",
-        validate_angle_limits: bool = True
-    ) -> None:
+        name: str = "pose"
+    ) -> list:
         """Validate a pose6 list: [x, y, z, roll, pitch, yaw].
 
         - `x/y/z`: meters
         - `roll/pitch/yaw`: radians
-        - Angle limits (if enabled):
             - roll, yaw in `[-pi, pi]`
             - pitch in `[-pi/2, pi/2]`
         """
@@ -179,13 +173,15 @@ class Validator:
         
         for i, val in enumerate(pose):
             Validator.validate_numeric(val, f"{name}[{i}]")
-
-        if validate_angle_limits:
-            roll, pitch, yaw = pose[3], pose[4], pose[5]
-            if abs(roll) > math.pi:
-                raise ValueError(f"{name}: roll must be within [-pi, pi] (unit: rad)")
-            if abs(yaw) > math.pi:
-                raise ValueError(f"{name}: yaw must be within [-pi, pi] (unit: rad)")
-            if abs(pitch) > (math.pi / 2.0):
-                raise ValueError(f"{name}: pitch must be within [-pi/2, pi/2] (unit: rad)")
         
+        if abs(pose[3]) > math.pi:
+            print(f"Warning: {name}[3] = {pose[3]} must be within [-pi, pi] (unit: rad)")
+            pose[3] = Validator.clamp(pose[3], -math.pi, math.pi)
+        if abs(pose[4]) > (math.pi / 2.0):
+            print(f"Warning: {name}[4] = {pose[4]} must be within [-pi/2, pi/2] (unit: rad)")
+            pose[4] = Validator.clamp(pose[4], -math.pi/2.0, math.pi/2.0)
+        if abs(pose[5]) > math.pi:
+            print(f"Warning: {name}[5] = {pose[5]} must be within [-pi, pi] (unit: rad)")
+            pose[5] = Validator.clamp(pose[5], -math.pi, math.pi)
+
+        return pose
