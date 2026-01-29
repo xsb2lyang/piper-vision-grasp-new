@@ -62,8 +62,8 @@ class ArmMsgFeedbackHighSpd(ArmMsgFeedbackHighSpdBase):
         Byte 6: Motor Position (Second Least Significant Byte)
         Byte 7: Motor Position (Least Significant Byte)
     '''
-    _VALID_CAN_ID_1 = [0x251, 0x252, 0x253, 0x254]
-    _VALID_CAN_ID_2 = [0x255, 0x256, 0x257]
+    _VALID_CAN_ID_1 = [0x251, 0x252, 0x253, 0x254, 0x255, 0x256, 0x257]
+    _VALID_CAN_ID_2 = []
 
 class ArmMsgFeedbackHighSpd1(ArmMsgFeedbackHighSpd):
     '''CAN ID:
