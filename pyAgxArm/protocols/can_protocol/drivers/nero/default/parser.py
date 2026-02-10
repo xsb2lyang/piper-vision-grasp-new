@@ -18,7 +18,47 @@ from ....msgs.nero.default import (
     ArmMsgFeedbackStatus,
     ArmMsgModeCtrl,
 )
+from ...core.protocol_parser_abstract import DriverAPIOptions, DriverAPIProtoAdapter
+from ....msgs.core import EnumBase, IntEnumBase, StrStruct
 
+class NeroDefaultDriverAPIOptions(DriverAPIOptions):
+
+    class PAYLOAD(StrStruct):
+        EMPTY = "empty"
+        HALF = "half"
+        FULL = "full"
+
+    class MOTION_MODE(StrStruct):
+        P = "p"
+        J = "j"
+        L = "l"
+        C = "c"
+        MIT = "mit"
+        JS = "js"
+
+class NeroDefaultDriverAPIProtoAdapter(DriverAPIProtoAdapter):
+
+    _MOVE_CODE = {
+        NeroDefaultDriverAPIOptions.MOTION_MODE.P: ArmMsgModeCtrl.Enums.MotionMode.P,
+        NeroDefaultDriverAPIOptions.MOTION_MODE.J: ArmMsgModeCtrl.Enums.MotionMode.J,
+        NeroDefaultDriverAPIOptions.MOTION_MODE.L: ArmMsgModeCtrl.Enums.MotionMode.L,
+        NeroDefaultDriverAPIOptions.MOTION_MODE.C: ArmMsgModeCtrl.Enums.MotionMode.C,
+        NeroDefaultDriverAPIOptions.MOTION_MODE.MIT: ArmMsgModeCtrl.Enums.MotionMode.MIT,
+        NeroDefaultDriverAPIOptions.MOTION_MODE.JS: ArmMsgModeCtrl.Enums.MotionMode.J,
+    }
+
+    _MIT_CODE = {
+        NeroDefaultDriverAPIOptions.MOTION_MODE.MIT: ArmMsgModeCtrl.Enums.MitMode.MIT,
+        NeroDefaultDriverAPIOptions.MOTION_MODE.JS: ArmMsgModeCtrl.Enums.MitMode.MIT,
+    }
+
+    @classmethod
+    def motion_mode(cls, value: str) -> tuple[int, int]:
+        return cls._MOVE_CODE[value]
+    
+    @classmethod
+    def mit_mode(cls, value: str) -> tuple[int, int]:
+        return cls._MIT_CODE.get(value, ArmMsgModeCtrl.Enums.MitMode.POS_VEL)
 
 class Codec(PiperCodec):
     """Nero 编解码器：在 Piper 基础上扩展第 7 轴相关编解码。"""

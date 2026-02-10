@@ -24,7 +24,7 @@ robot.connect()
 print(robot.get_channel())
 print(robot.__doc__)
 
-end_effector = robot.init_effector(robot.EFFECTOR.REVO2)
+end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 print(end_effector.__doc__)
 
 
@@ -39,7 +39,7 @@ print(end_effector.__doc__)
 #     time.sleep(0.01)
 
 # robot.set_speed_percent(100)
-# robot.set_motion_mode(robot.MOTION_MODE.P)
+# robot.set_motion_mode(robot.OPTIONS.MOTION_MODE.P)
 
 
 # -------------------------- Move -----------------------------

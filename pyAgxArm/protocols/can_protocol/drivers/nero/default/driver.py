@@ -1,7 +1,7 @@
 from typing import Optional, ClassVar, List, Dict
 from typing_extensions import Literal, Final
 
-from .parser import Parser
+from .parser import Parser, NeroDefaultDriverAPIOptions, NeroDefaultDriverAPIProtoAdapter
 from ...core.arm_driver_abstract import ArmDriverAbstract
 from ....msgs.core import MessageAbstract
 from ......utiles.numeric_codec import RAD2DEG
@@ -48,26 +48,9 @@ class Driver(ArmDriverAbstract):
       docstrings will mention the verification method if applicable.
     """
 
-    class MOTION_MODE:
-        """
-        Motion mode constants.
-
-        Use:
-            robot.set_motion_mode(robot.MOTION_MODE.J)
-        """
-
-        P: Final[Literal["p"]] = "p"
-        J: Final[Literal["j"]] = "j"
-
-        _VALUES: ClassVar[List[str]] = [P, J]
-        _MOVE_CODE: ClassVar[Dict[str, int]] = {
-            P: 0x00,
-            J: 0x01,
-        }
-        _MIT_CODE: ClassVar[Dict[str, int]] = {
-            P: 0x00,
-            J: 0x00,
-        }
+    @property
+    def OPTIONS(self):
+        return NeroDefaultDriverAPIOptions
 
     ARM_STATUS = ArmMsgFeedbackStatusEnum
 
@@ -656,8 +639,8 @@ class Driver(ArmDriverAbstract):
         Parameters
         ----------
         `motion_mode`: Literal['p', 'j']
-        - `MOTION_MODE.P`: move p
-        - `MOTION_MODE.J`: move j
+        - `OPTIONS.MOTION_MODE.P`: move p
+        - `OPTIONS.MOTION_MODE.J`: move j
 
         Raises
         ------
@@ -667,15 +650,15 @@ class Driver(ArmDriverAbstract):
 
         Examples
         --------
-        >>> robot.set_motion_mode(robot.MOTION_MODE.P)
+        >>> robot.set_motion_mode(robot.OPTIONS.MOTION_MODE.P)
         """
-        if motion_mode not in self.MOTION_MODE._VALUES:
+        if motion_mode not in self.OPTIONS.MOTION_MODE.value_list():
             raise ValueError(
                 "Invalid motion mode, should be in MOTION_MODE: "
-                f"{self.MOTION_MODE._VALUES}"
+                f"{self.OPTIONS.MOTION_MODE.value_list()}"
             )
-        self._msg_mode.move_mode = self.MOTION_MODE._MOVE_CODE[motion_mode]
-        self._msg_mode.mit_mode = self.MOTION_MODE._MIT_CODE[motion_mode]
+        self._msg_mode.move_mode = NeroDefaultDriverAPIProtoAdapter.motion_mode(motion_mode)
+        self._msg_mode.mit_mode = NeroDefaultDriverAPIProtoAdapter.mit_mode(motion_mode)
         self._msg_mode.enable_can_push = 0x01
         self._set_mode()
         self._msg_mode.enable_can_push = 0x00

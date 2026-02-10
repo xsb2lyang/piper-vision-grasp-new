@@ -563,7 +563,7 @@ set_motion_mode(self, motion_mode: Literal["p", "j"] = "p") -> None
 
 |名称|类型|说明|
 |---|---|---|
-|motion_mode|str|运动模式：`"p"` 末端模式；`"j"` 关节模式（建议使用 `robot.MOTION_MODE.xxx` 常量）|
+|motion_mode|str|运动模式：`"p"` 末端模式；`"j"` 关节模式（建议使用 `robot.OPTIONS.MOTION_MODE.xxx` 常量）|
 
 - 使用示例:
 
@@ -574,7 +574,7 @@ cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
-robot.set_motion_mode(robot.MOTION_MODE.P)  # 或 robot.set_motion_mode("p")
+robot.set_motion_mode(robot.OPTIONS.MOTION_MODE.P)  # 或 robot.set_motion_mode("p")
 ```
 
 ## TCP相关
