@@ -46,7 +46,7 @@ print(end_effector.__doc__)
 
 # The following poses are for Piper and need to be replaced with Nero poses to run successfully on Nero.
 
-# robot.move_p([-0.160251, -0.043348, 0.6907249999999999, 1.117935745779928, 0.9272061651219876, 0.14817845349431857])
+# robot.move_p([-0.4, -0.0, 0.4, 1.570823, 0.0, 0.0])
 # wait_motion_done(robot, timeout=5.0)
 
 # robot.move_j([0.0] * 7)
