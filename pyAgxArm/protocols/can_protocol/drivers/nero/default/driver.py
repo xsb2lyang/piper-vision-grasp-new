@@ -691,8 +691,8 @@ class Driver(ArmDriverAbstract):
         msgs = self._deal_move_p_msgs(pose)
 
         # Set motion mode and send commands
-        self._send_msgs(msgs)
         self.set_motion_mode('p')
+        self._send_msgs(msgs)
 
     def move_j(self, joints: List[float]):
         """Move the robotic arm joints to the specified target angles (joint space).
@@ -718,8 +718,8 @@ class Driver(ArmDriverAbstract):
         msgs = self._deal_move_j_msgs(joints)
 
         # Set motion mode and send commands
-        self._send_msgs(msgs)
         self.set_motion_mode('j')
+        self._send_msgs(msgs)
 
     # -------------------------- Master-Slave --------------------------
 

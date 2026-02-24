@@ -1183,20 +1183,6 @@ class Driver(ArmDriverAbstract):
         if joint_index not in self._JOINT_INDEX_LIST[:-1]:
             raise ValueError(
                 f"Joint index should be {self._JOINT_INDEX_LIST[:-1]}")
-        if p_des < -12.5 or p_des > 12.5:
-            raise ValueError(
-                "Position reference should be between -12.5 and 12.5")
-        if v_des < -45.0 or v_des > 45.0:
-            raise ValueError(
-                "Velocity reference should be between -45.0 and 45.0")
-        if kp < 0.0 or kp > 500.0:
-            raise ValueError(
-                "Proportional gain should be between 0.0 and 500.0")
-        if kd < -5.0 or kd > 5.0:
-            raise ValueError("Derivative gain should be between -5.0 and 5.0")
-        if t_ff < -8.0 or t_ff > 8.0:
-            raise ValueError(
-                "Torque reference should be between -8.0 and 8.0")
 
         limits = self._config.get(
             "joint_limits", {}
@@ -1206,8 +1192,8 @@ class Driver(ArmDriverAbstract):
             lower_limit = limits[0]
             upper_limit = limits[1]
         else:
-            lower_limit = -Validator.REF_MAX_ANGLE
-            upper_limit = Validator.REF_MAX_ANGLE
+            lower_limit = -12.5
+            upper_limit = 12.5
         
         if not Validator.is_within_limit(p_des, lower_limit, upper_limit):
             print(
@@ -1215,6 +1201,33 @@ class Driver(ArmDriverAbstract):
                 f"joint {joint_index} limits [{lower_limit}, {upper_limit}] rad. "
             )
             p_des = Validator.clamp(p_des, lower_limit, upper_limit)
+
+        if not Validator.is_within_limit(v_des, -45.0, 45.0):
+            print(
+                f"Warning: Desired velocity {v_des} rad/s is outside "
+                f"joint {joint_index} limits [-45.0, 45.0] rad/s. "
+            )
+            v_des = Validator.clamp(v_des, -45.0, 45.0)
+
+        if not Validator.is_within_limit(kp, 0.0, 500.0):
+            print(
+                f"Warning: Proportional gain {kp} is outside "
+                f"joint {joint_index} limits [0.0, 500.0]. "
+            )
+            kp = Validator.clamp(kp, 0.0, 500.0)
+
+        if not Validator.is_within_limit(kd, -5.0, 5.0):
+            print(
+                f"Warning: Derivative gain {kd} is outside "
+                f"joint {joint_index} limits [-5.0, 5.0]. "
+            )
+            kd = Validator.clamp(kd, -5.0, 5.0)
+        
+        if not Validator.is_within_limit(t_ff, -8.0, 8.0):
+            print(
+                f"Warning: Feed-forward torque {t_ff} N·m is outside "
+                f"joint {joint_index} limits [-8.0, 8.0]. "
+            )
 
         p_des = nc.FloatToUint(p_des, -12.5, 12.5, 16)
         v_des = nc.FloatToUint(v_des, -45.0, 45.0, 12)
