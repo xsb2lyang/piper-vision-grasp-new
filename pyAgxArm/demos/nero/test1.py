@@ -46,13 +46,36 @@ print(end_effector.__doc__)
 
 # The following poses are for Piper and need to be replaced with Nero poses to run successfully on Nero.
 
-# robot.move_p([-0.4, -0.0, 0.4, 1.570823, 0.0, 0.0])
+# robot.move_p([-0.4, -0.0, 0.4, 1.5708, 0.0, 0.0])
 # wait_motion_done(robot, timeout=5.0)
 
-# robot.move_l([-0.4, -0.2, 0.4, 1.570823, 0.0, 0.0])
+# robot.move_l([-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0])
+# wait_motion_done(robot, timeout=5.0)
+
+# start_pose = [-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0]
+# mid_pose = [-0.4, 0.0, 0.45, 1.5708, 0.0, 0.0]
+# end_pose = [-0.4, 0.2, 0.4, 1.5708, 0.0, 0.0]
+# robot.move_c(start_pose, mid_pose, end_pose)
 # wait_motion_done(robot, timeout=5.0)
 
 # robot.move_j([0.01] * 7)
+# wait_motion_done(robot, timeout=5.0)
+
+
+# --------------------------  MIT mode ------------------------
+
+# robot.move_js([0.1] * 7)
+# wait_motion_done(robot, timeout=5.0)
+
+# for i in range(1, robot.joint_nums + 1):
+#     robot.move_mit(
+#         joint_index=i,
+#         p_des=0.0,
+#         v_des=0.0,
+#         kp=10.0,
+#         kd=0.8,
+#         t_ff=0.0,
+#     )
 # wait_motion_done(robot, timeout=5.0)
 
 

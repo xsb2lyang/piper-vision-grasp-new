@@ -681,7 +681,7 @@ get_flange2tcp_pose(self, flange_pose: list[float]) -> list[float]
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -924,7 +924,7 @@ while not robot.enable():
     time.sleep(0.01)
 
 robot.set_speed_percent(100)
-robot.move_j([0, 0.4, -0.4, 0, -0.4, 0, 0])
+robot.move_j([0.0, 0.1, 0.1, 0.0, 0.1, 0.0, 0.0])
 
 # 等待运动结束（带 5s 超时，避免无限等待）
 time.sleep(0.5)
@@ -943,6 +943,53 @@ while True:
 注意:
 
 如果连续该指令会覆盖上一次的目标值
+
+### 关节运动(从臂控制模式) move_js()
+
+- 功能说明:
+
+该指令会将机械臂切换到 **JS（从臂）模式**（MIT 透传模式），并下发关节目标角度。
+
+与 `move_j` 相比，`move_js` 更偏向“快速响应”控制：**不做平滑处理、无轨迹规划**，控制器/驱动器会尽可能快（但并非无限快）地响应目标角度。
+
+- 定义:
+
+```python
+move_js(self, joints: list[float]) -> None
+```
+
+- 参数说明:
+
+|名称|类型|说明|
+|---|---|---|
+|joints|list[float]|长度 7 的各关节目标角度数组：`[j1, j2, j3, j4, j5, j6, j7]`（单位：rad，数值精度：1.74532925199e-5）|
+
+- 使用示例:
+
+```python
+import time
+from pyAgxArm import create_agx_arm_config, AgxArmFactory
+
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+while not robot.enable():
+    time.sleep(0.01)
+
+# robot.set_speed_percent(100) # 该模式下设定的速度失效
+robot.move_js([0.0] * robot.joint_nums)
+```
+
+注意:
+
+1. **风险等级：极高**。该模式可能导致**冲击、振荡、失稳**等风险，请仅在充分评估安全与控制稳定性的前提下使用，并确保随时可急停。
+
+2. 该模式为“瞬时响应”风格：**无平滑过程、无轨迹规划**，控制器/驱动器尝试以最快响应（非无限快）到达目标，可能产生冲击、振荡。
+
+3. 如果连续执行该指令会覆盖上一次的目标值
+
+4. 由于响应变快，关节的控制力度相较于位置速度模式小，刚度也会变小
 
 ### 点到点运动 move_p()
 
@@ -976,7 +1023,7 @@ while not robot.enable():
     time.sleep(0.01)
 
 robot.set_speed_percent(100)
-robot.move_p([-0.4, -0.0, 0.4, 1.570823, 0.0, 0.0])
+robot.move_p([-0.4, -0.0, 0.4, 1.5708, 0.0, 0.0])
 
 # 等待运动结束（带 5s 超时，避免无限等待）
 time.sleep(0.5)
@@ -1028,7 +1075,7 @@ while not robot.enable():
     time.sleep(0.01)
 
 robot.set_speed_percent(100)
-robot.move_l([-0.4, -0.2, 0.4, 1.570823, 0.0, 0.0])
+robot.move_l([-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0])
 
 # 等待运动结束（带 5s 超时，避免无限等待）
 time.sleep(0.5)
@@ -1047,3 +1094,134 @@ while True:
 注意:
 
 连续执行该指令虽然可以覆盖上一次的目标，但是由于底层每接收到新的点位，都需要重新进行直线规划，因此不能够使用该指令连续发目标点
+
+### 圆弧运动 move_c()
+
+- 功能说明:
+
+圆弧运动控制：通过“起点/中间点/终点”三个目标法兰位姿进行圆弧轨迹规划并执行。
+
+- 定义:
+
+```python
+move_c(self, start_pose: list[float], mid_pose: list[float], end_pose: list[float]) -> None
+```
+
+- 参数说明:
+
+|名称|类型|说明|
+|---|---|---|
+|start_pose|list[float]|起点位姿 `[x, y, z, roll, pitch, yaw]`（m / rad）|
+|mid_pose|list[float]|中间点位姿 `[x, y, z, roll, pitch, yaw]`（m / rad）|
+|end_pose|list[float]|终点位姿 `[x, y, z, roll, pitch, yaw]`（m / rad）|
+
+- 使用示例:
+
+```python
+import time
+from pyAgxArm import create_agx_arm_config, AgxArmFactory
+
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+while not robot.enable():
+    time.sleep(0.01)
+
+robot.set_speed_percent(100)
+sp = [-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0]
+mp = [-0.4, 0.0, 0.45, 1.5708, 0.0, 0.0]
+ep = [-0.4, 0.2, 0.4, 1.5708, 0.0, 0.0]
+robot.move_c(sp, mp, ep)
+
+# 等待运动结束（带 5s 超时，避免无限等待）
+time.sleep(0.5)
+start_t = time.monotonic()
+while True:
+    status = robot.get_arm_status()
+    if status is not None and status.msg.motion_status == 0:
+        print("已到达目标位置")
+        break
+    if time.monotonic() - start_t > 5.0:
+        print("等待运动结束超时（5s）")
+        break
+    time.sleep(0.1)
+```
+
+### 单关节mit控制 move_mit()
+
+- 功能说明:
+
+该指令为使用关节驱动底层的mit控制接口，控制单个关节电机，可以实现电流模拟的力矩控制
+
+该接口会发送 MIT 控制消息。
+
+控制器概念上会计算参考力矩：
+
+$$T_{\text{ref}} = k_p \cdot (p_{\text{des}} - p) + k_d \cdot (v_{\text{des}} - v) + T_{\text{ff}}$$
+
+其中 \(p/v\) 为关节实测位置/速度。
+
+典型用法建议：
+
+**速度控制**：设置 `kp = 0`、`kd != 0`，主要通过 `v_des` 控制。
+
+**力矩控制**：设置 `kp = 0`、`kd = 0`，主要通过 `t_ff` 控制。
+
+**位置控制**：当 `kp != 0` 时，不建议将 `kd` 设为 0（可适当增大阻尼以降低振荡风险）。
+
+风险提示：MIT 属于较底层控制接口，参数不当可能引发 **冲击/振荡/不稳定**；建议从小增益开始调试，并在安全工况下使用。
+
+- 定义:
+
+```python
+move_mit(
+    self,
+    joint_index: Literal[1, 2, 3, 4, 5, 6, 7],
+    p_des: float = 0.0,
+    v_des: float = 0.0,
+    kp: float = 10.0,
+    kd: float = 0.8,
+    t_ff: float = 0.0,
+    ) -> None
+```
+
+- 参数说明:
+
+|名称|类型|说明|
+|---|---|---|
+|joint_index|int|目标关节，有效值范围[1, 2, 3, 4, 5, 6, 7]|
+|p_des|float|目标位置，数值范围[-12.5, 12.5]，单位：弧度，默认值0.0，数值精度：3.8147554741741054e-4|
+|v_des|float|目标速度，数值范围[-45.0, 45.0]，单位：弧度/秒，默认值0.0，数值精度：2.197802197802198e-2|
+|kp|float|位置增益，数值范围[0.0, 500.0]，默认值10.0，数值精度：1.221001221001221e-1|
+|kd|float|速度增益，数值范围[-5.0, 5.0]，默认值0.8。数值精度：2.442002442002442e-3|
+|t_ff|float|前馈扭矩，数值范围[-8.0, 8.0]，单位N·m，默认值0.0，数值精度：6.274509803921569e-2|
+
+- 使用示例:
+
+```python
+import time
+from pyAgxArm import create_agx_arm_config, AgxArmFactory
+
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+while not robot.enable():
+    time.sleep(0.01)
+
+# robot.set_speed_percent(100) # 该模式下速度设置无效
+for i in range(1, robot.joint_nums + 1):
+    robot.move_mit(
+        joint_index=i,
+        p_des=0.0,
+        v_des=0.0,
+        kp=10.0,
+        kd=0.8,
+        t_ff=0.0,
+    )
+```
+
+注意:
+
+如果连续执行该指令会覆盖上一次的目标值

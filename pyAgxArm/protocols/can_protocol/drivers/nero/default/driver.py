@@ -4,7 +4,10 @@ from typing_extensions import Literal
 from .parser import Parser, NeroDefaultDriverAPIOptions, NeroDefaultDriverAPIProtoAdapter
 from ...core.arm_driver_abstract import ArmDriverAbstract
 from ....msgs.core import MessageAbstract
-from ......utiles.numeric_codec import RAD2DEG
+from ......utiles.numeric_codec import (
+    NumericCodec as nc,
+    RAD2DEG,
+)
 from ......utiles.vaildator import Validator
 from ....msgs.nero.default import (
     ArmMsgModeCtrl,
@@ -47,7 +50,6 @@ class Driver(ArmDriverAbstract):
     - Some `set_*` APIs additionally verify by reading back state; their
       docstrings will mention the verification method if applicable.
     """
-
     @property
     def OPTIONS(self):
         return NeroDefaultDriverAPIOptions
@@ -63,7 +65,7 @@ class Driver(ArmDriverAbstract):
     _MSG_ModeCtrl = ArmMsgModeCtrl
     _MSG_MotorEnableDisableConfig = ArmMsgMotorEnableDisableConfig
 
-    def __init__(self, config):
+    def __init__(self, config: dict):
         super().__init__(config)
         self._parser: Parser = self._parser
         self._msg_mode = self._MSG_ModeCtrl()
@@ -352,6 +354,10 @@ class Driver(ArmDriverAbstract):
         >>> arm_status = robot.get_arm_status()
         >>> if arm_status is not None:
         >>>     print(arm_status.msg)
+        >>>     print(
+        ...         arm_status.msg.arm_status
+        ...         == robot.ARM_STATUS.ArmStatus.NORMAL
+        ...     )
         >>>     print(arm_status.hz, arm_status.timestamp)
         >>>     # unit: Hz, s
         """
@@ -632,21 +638,25 @@ class Driver(ArmDriverAbstract):
 
     def set_motion_mode(
         self,
-        motion_mode: Literal['p', 'j'] = 'p'
+        motion_mode: Literal['p', 'j', 'l', 'c', 'mit', 'js'] = 'p'
     ):
         """Set movement mode and MIT mode.
 
         Parameters
         ----------
-        `motion_mode`: Literal['p', 'j']
+        `motion_mode`: Literal['p', 'j', 'l', 'c', 'mit', 'js']
         - `OPTIONS.MOTION_MODE.P`: move p
         - `OPTIONS.MOTION_MODE.J`: move j
+        - `OPTIONS.MOTION_MODE.L`: move l
+        - `OPTIONS.MOTION_MODE.C`: move c
+        - `OPTIONS.MOTION_MODE.MIT`: move mit (MIT)
+        - `OPTIONS.MOTION_MODE.JS`: move js (MIT)
 
         Raises
         ------
         ValueError
             If `motion_mode` is not in
-            ['p', 'j'].
+            ['p', 'j', 'l', 'c', 'mit', 'js'].
 
         Examples
         --------
@@ -654,7 +664,7 @@ class Driver(ArmDriverAbstract):
         """
         if motion_mode not in self.OPTIONS.MOTION_MODE.value_list():
             raise ValueError(
-                "Invalid motion mode, should be in MOTION_MODE: "
+                "Invalid motion mode, should be in OPTIONS.MOTION_MODE: "
                 f"{self.OPTIONS.MOTION_MODE.value_list()}"
             )
         self._msg_mode.move_mode = NeroDefaultDriverAPIProtoAdapter.motion_mode(motion_mode)
@@ -686,6 +696,10 @@ class Driver(ArmDriverAbstract):
 
             If `roll`, `yaw` is outside `[-pi, pi]` or `pitch` is outside
             `[-pi/2, pi/2]`.
+
+        Examples
+        --------
+        >>> robot.move_p([-0.4, -0.0, 0.4, 1.5708, 0.0, 0.0])
         """
         # Prepare control messages
         msgs = self._deal_move_p_msgs(pose)
@@ -695,7 +709,7 @@ class Driver(ArmDriverAbstract):
         self._send_msgs(msgs)
 
     def move_j(self, joints: List[float]):
-        """Move the robotic arm joints to the specified target angles (joint space).
+        """Move the robotic arm joints to the specified target angles in joint space.
 
         Parameters
         ----------
@@ -721,6 +735,49 @@ class Driver(ArmDriverAbstract):
         self.set_motion_mode('j')
         self._send_msgs(msgs)
 
+    def move_js(self, joints: List[float]):
+        """Move the robotic arm joints to the specified target angles in joint
+        space with "JS" mode enabled.
+
+        This is similar to `move_j`, but sets a specific `mit_mode`
+        before sending the joint command messages.
+
+        WARNING
+        -------
+        This API is intended for "instantaneous" response:
+        - No smoothing.
+        - No trajectory planning.
+        - The controller/driver will try to respond as fast as possible
+          (not infinitely fast) to reach the target.
+
+        This may cause severe mechanical shock, oscillation, or instability.
+
+        Risk level: EXTREMELY HIGH.
+
+        Parameters
+        ----------
+        `joints`: list[float]
+        - `list[float]` - > `[j1, j2, j3, j4, j5, j6, j7]`
+        - `j1..j7`: Joint angles in radians.
+            (Numerical precision: 1.74532925199e-5 rad)
+
+        Raises
+        ------
+        ValueError
+            If `joints` is not a list or does not have length 7.
+
+        Examples
+        --------
+        Fast-response joint move:
+        >>> robot.move_js([0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        """
+        # Prepare control messages
+        msgs = self._deal_move_j_msgs(joints)
+
+        # Set motion mode and send commands
+        self.set_motion_mode('js')
+        self._send_msgs(msgs)
+
     def move_l(self, pose: List[float]):
         """Move the robotic arm flange to target pose in Cartesian space with
         linear motion.
@@ -743,6 +800,10 @@ class Driver(ArmDriverAbstract):
 
             If `roll`, `yaw` is outside `[-pi, pi]` or `pitch` is outside
             `[-pi/2, pi/2]`.
+
+        Examples
+        --------
+        >>> robot.move_l([-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0])
         """
         # Prepare control messages
         msgs = self._deal_move_p_msgs(pose)
@@ -750,6 +811,202 @@ class Driver(ArmDriverAbstract):
         # Set motion mode and send commands
         self.set_motion_mode('l')
         self._send_msgs(msgs)
+
+    def move_c(
+        self,
+        start_pose: List[float],
+        mid_pose: List[float],
+        end_pose: List[float],
+    ):
+        """Move the robotic arm flange to specified pose in Cartesian space with
+        circular motion.
+
+        Parameters
+        ----------
+        `start_pose` | `mid_pose` | `end_pose`: list[float]
+        - `list[float]` - > `[x, y, z, roll, pitch, yaw]`
+        - `x, y, z`: Position coordinates in meters.
+            (Numerical precision: 1e-6 m)
+        - `roll, pitch, yaw`: Rotation angles around X, Y, Z axes respectively
+            in radians. (Numerical precision: 1.74532925199e-5 rad)
+          - `roll`, `yaw` must be within `[-pi, pi]`
+          - `pitch` must be within `[-pi/2, pi/2]`
+
+        Raises
+        ------
+        ValueError
+            If start_pose, mid_pose, or end_pose
+            is not a list or has incorrect length (not 6 elements).
+
+            If `roll`, `yaw` is outside `[-pi, pi]` or `pitch` is outside
+            `[-pi/2, pi/2]`.
+
+        Examples
+        --------
+        >>> sp = [-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0]
+        >>> mp = [-0.4, -0.0, 0.45, 1.5708, 0.0, 0.0]
+        >>> ep = [-0.4, 0.2, 0.4, 1.5708, 0.0, 0.0]
+        >>> robot.move_c(sp, mp, ep)
+        """
+        # Prepare control messages
+        msgs = self._deal_move_p_msgs(start_pose)
+        msgs.append(self._parser._make_circular_coord_num_update_msg(0x01))
+        msgs += self._deal_move_p_msgs(mid_pose)
+        msgs.append(self._parser._make_circular_coord_num_update_msg(0x02))
+        msgs += self._deal_move_p_msgs(end_pose)
+        msgs.append(self._parser._make_circular_coord_num_update_msg(0x03))
+
+        # Set motion mode and send commands
+        self.set_motion_mode('c')
+        self._send_msgs(msgs)
+
+    def move_mit(
+        self,
+        joint_index: Literal[1, 2, 3, 4, 5, 6, 7],
+        p_des: float = 0.0,
+        v_des: float = 0.0,
+        kp: float = 10.0,
+        kd: float = 0.8,
+        t_ff: float = 0.0,
+    ):
+        """Control a single joint in MIT (impedance/torque) style mode.
+
+        This API sends an MIT control message for a specific joint with desired
+        position/velocity, PD gains, and feed-forward torque.
+
+        The controller conceptually computes a reference torque:
+
+            T_ref = kp * (p_des - p) + kd * (v_des - v) + t_ff
+
+        where `p/v` are the measured joint `position/velocity`.
+
+        Parameters
+        ----------
+        `joint_index`: Literal[1, 2, 3, 4, 5, 6, 7]
+
+        `p_des`: float, optional
+        - Desired position reference (unit: rad). Range: [-12.5, 12.5].
+          Default is
+            0.0. (Numerical precision: 3.8147554741741054e-4 rad)
+
+        `v_des`: float, optional
+        - Desired velocity reference (unit: rad/s). Range: [-45.0, 45.0].
+          Default is
+            0.0. (Numerical precision: 2.197802197802198e-2 rad/s)
+
+        `kp`: float, optional
+        - Proportional gain. Range: [0.0, 500.0]. Default is 10.0.
+            (Numerical precision: 1.221001221001221e-1)
+
+        `kd`: float, optional
+        - Derivative gain. Range: [-5.0, 5.0]. Default is 0.8.
+            (Numerical precision: 2.442002442002442e-3)
+
+        `t_ff`: float, optional
+        - Feed-forward torque reference (unit: N·m). Range: [-8.0, 8.0].
+          Default is
+            0.0. (Numerical precision: 6.274509803921569e-2 N·m)
+
+        Raises
+        ------
+        ValueError
+            If any parameter is outside the allowed range, or if `joint_index`
+            is not in {1, 2, 3, 4, 5, 6, 7}.
+
+        Notes
+        -----
+        - This uses MIT move mode.
+        - Typical usage patterns:
+          - Velocity control: set `kp = 0`, `kd != 0`, command `v_des`.
+          - Torque control: set `kp = 0`, `kd = 0`, command `t_ff`.
+          - Position control: avoid `kd = 0` when `kp != 0` to reduce
+            oscillation risk.
+
+        Examples
+        --------
+        Hold joint 1 at a target position:
+        >>> robot.move_mit(
+        ...     joint_index=1, p_des=0.5, v_des=0.0, kp=10.0, kd=0.8, t_ff=0.0
+        ... )
+
+        Damped motion on joint 1 (increase kd for more damping):
+        >>> robot.move_mit(
+        ...     joint_index=1, p_des=0.0, v_des=0.0, kp=10.0, kd=2.0
+        ... )
+
+        Apply feed-forward torque on joint 1 (with low gains):
+        >>> robot.move_mit(
+        ...     joint_index=1, p_des=0.0, v_des=0.0, kp=2.0, kd=0.5, t_ff=1.5
+        ... )
+        """
+        if joint_index not in self._JOINT_INDEX_LIST[:-1]:
+            raise ValueError(
+                f"Joint index should be {self._JOINT_INDEX_LIST[:-1]}")
+
+        limits = self._config.get(
+            "joint_limits", {}
+        ).get(f"joint{joint_index}", None)
+
+        if limits is not None:
+            lower_limit = limits[0]
+            upper_limit = limits[1]
+        else:
+            lower_limit = -12.5
+            upper_limit = 12.5
+        
+        if not Validator.is_within_limit(p_des, lower_limit, upper_limit):
+            print(
+                f"Warning: Desired position {p_des} rad is outside "
+                f"joint {joint_index} limits [{lower_limit}, {upper_limit}] rad. "
+            )
+            p_des = Validator.clamp(p_des, lower_limit, upper_limit)
+
+        if not Validator.is_within_limit(v_des, -45.0, 45.0):
+            print(
+                f"Warning: Desired velocity {v_des} rad/s is outside "
+                f"joint {joint_index} limits [-45.0, 45.0] rad/s. "
+            )
+            v_des = Validator.clamp(v_des, -45.0, 45.0)
+
+        if not Validator.is_within_limit(kp, 0.0, 500.0):
+            print(
+                f"Warning: Proportional gain {kp} is outside "
+                f"joint {joint_index} limits [0.0, 500.0]. "
+            )
+            kp = Validator.clamp(kp, 0.0, 500.0)
+
+        if not Validator.is_within_limit(kd, -5.0, 5.0):
+            print(
+                f"Warning: Derivative gain {kd} is outside "
+                f"joint {joint_index} limits [-5.0, 5.0]. "
+            )
+            kd = Validator.clamp(kd, -5.0, 5.0)
+        
+        if not Validator.is_within_limit(t_ff, -8.0, 8.0):
+            print(
+                f"Warning: Feed-forward torque {t_ff} N·m is outside "
+                f"joint {joint_index} limits [-8.0, 8.0]. "
+            )
+            t_ff = Validator.clamp(t_ff, -8.0, 8.0)
+
+        p_des = nc.FloatToUint(p_des, -12.5, 12.5, 16)
+        v_des = nc.FloatToUint(v_des, -45.0, 45.0, 12)
+        kp = nc.FloatToUint(kp, 0.0, 500.0, 12)
+        kd = nc.FloatToUint(kd, -5.0, 5.0, 12)
+        t_ff = nc.FloatToUint(t_ff, -8.0, 8.0, 8)
+
+        msg = self._parser._make_joint_mit_ctrl_msg(
+            joint_index=joint_index,
+            p_des=p_des,
+            v_des=v_des,
+            kp=kp,
+            kd=kd,
+            t_ff=t_ff,
+        )
+
+        # Set motion mode and send commands
+        self.set_motion_mode('mit')
+        self._send_msg(msg)
 
     # -------------------------- Master-Slave --------------------------
 

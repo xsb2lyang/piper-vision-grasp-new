@@ -1521,12 +1521,15 @@ while not robot.enable():
     time.sleep(0.01)
 
 # robot.set_speed_percent(100) # 该模式下速度设置无效
-robot.move_mit(1, 0.0)
-robot.move_mit(2, 0.4)
-robot.move_mit(3, -0.4)
-robot.move_mit(4, 0.0)
-robot.move_mit(5, -0.4)
-robot.move_mit(6, 0.4)
+for i in range(1, robot.joint_nums + 1):
+    robot.move_mit(
+        joint_index=i,
+        p_des=0.0,
+        v_des=0.0,
+        kp=10.0,
+        kd=0.8,
+        t_ff=0.0,
+    )
 ```
 
 注意:

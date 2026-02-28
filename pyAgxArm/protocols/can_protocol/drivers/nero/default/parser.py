@@ -143,7 +143,7 @@ class Parser(PiperParser):
         tx = super()._build_tx_map()
 
         # Nero 精简协议：移除Nero不支持的发送映射
-        remove_can_ids = {0x158, 0x191, 0x472,
+        remove_can_ids = {0x191, 0x472,
                           0x474, 0x475, 0x477,
                           0x479, 0x47A, 0x4AF,}
         for msg_type, (can_id, _enc) in list(tx.items()):

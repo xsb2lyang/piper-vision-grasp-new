@@ -801,11 +801,11 @@ class Driver(ArmDriverAbstract):
     def reset(self):
         """Reset motion controller state.
 
-        This issues a motion control command to reset the arm's motion state.
+        This issues a motion control command to reset the robotic arm's motion state.
 
         Examples
         --------
-        Reset the arm:
+        Reset the robotic arm:
         >>> robot.reset()
         """
         msg = ArmMsgMotionCtrl(2)
