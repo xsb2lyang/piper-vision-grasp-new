@@ -24,6 +24,7 @@
 
 | Topic | Link |
 | --- | --- |
+| ROS | [agx_arm_ros](https://github.com/agilexrobotics/agx_arm_ros) |
 | CAN module manual | [docs/can_user.md](./docs/can_user.md#can-module-manual) |
 | Piper API | [docs/piper/piper_api.md](./docs/piper/piper_api.md#piper-api-documentation) |
 | Nero API | [docs/nero/nero_api.md](./docs/nero/nero_api.md#nero-api-documentation) |
@@ -113,6 +114,7 @@ while True:
 
 | 说明 | 文档 |
 | --- | --- |
+| ROS | [agx_arm_ros](https://github.com/agilexrobotics/agx_arm_ros) |
 | CAN 模块手册 | [docs/can_user.md](./docs/can_user.md#can-模块使用手册) |
 | Piper API | [docs/piper/piper_api.md](./docs/piper/piper_api.md#piper-机械臂-api-使用文档) |
 | Nero API | [docs/nero/nero_api.md](./docs/nero/nero_api.md#nero-机械臂-api-使用文档) |
