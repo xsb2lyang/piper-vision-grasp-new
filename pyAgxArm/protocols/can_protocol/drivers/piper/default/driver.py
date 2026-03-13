@@ -696,6 +696,10 @@ class Driver(ArmDriverAbstract):
             self._send_msg(ArmMsgReqFirmware())
 
         def is_ready() -> bool:
+            if self.get_fps() <= 0:
+                clear()
+                return False
+            
             return (
                 getattr(self._parser, "firmware_info", None) is not None
                 and len(self._parser.firmware_info.msg.data_seg) == 8 * 11

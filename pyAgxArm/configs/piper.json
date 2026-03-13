@@ -8,7 +8,9 @@
             "bitrate": 1000000,
             "enable_check_can": false,
             "auto_connect": false,
-            "timeout": 1.0
+            "timeout": 1.0,
+            "local_loopback": false,
+            "receive_own_messages": false
         }
     },
     "log":{
