@@ -209,7 +209,7 @@ Verified interface/channel examples:
 - Windows `agx_cando`: `create_agx_arm_config(..., interface="agx_cando", channel="0")`
 - macOS `slcan`: `create_agx_arm_config(..., interface="slcan", channel="/dev/ttyACM0")`
 
-On Windows, `interface="agx_cando"` requires the separately installed `python-can-agx-cando` plugin. Install it from `https://github.com/kehuanjack/python-can-agx-cando.git`, then run `pip3 install .` in that repository before using `pyAgxArm`.
+On Windows, `interface="agx_cando"` requires the separately installed `python-can-agx-cando` plugin. Install it from `https://github.com/agilexrobotics/python-can-agx-cando.git`, then run `pip3 install .` in that repository before using `pyAgxArm`.
 On macOS (`Darwin`), when using `interface="slcan"` with the default channel, grant serial permission first.
 
 **Usage Example:**
@@ -2478,7 +2478,7 @@ create_agx_arm_config(
 - Windows `agx_cando`：`create_agx_arm_config(..., interface="agx_cando", channel="0")`
 - macOS `slcan`：`create_agx_arm_config(..., interface="slcan", channel="/dev/ttyACM0")`
 
-在 Windows 上使用 `interface="agx_cando"` 前，需要先单独安装 `python-can-agx-cando` 插件。可先从 `https://github.com/kehuanjack/python-can-agx-cando.git` 克隆仓库，再进入仓库目录执行 `pip3 install .` 完成安装。
+在 Windows 上使用 `interface="agx_cando"` 前，需要先单独安装 `python-can-agx-cando` 插件。可先从 `https://github.com/agilexrobotics/python-can-agx-cando.git` 克隆仓库，再进入仓库目录执行 `pip3 install .` 完成安装。
 在 macOS（`Darwin`）下使用 `interface="slcan"` 且默认通道时，需要先给予串口权限。
 
 **使用示例：**

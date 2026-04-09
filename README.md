@@ -50,7 +50,7 @@ pip3 install python-can
 If you want to use this SDK on Windows, you must install the `python-can-agx-cando` plugin and use the `agx_cando` interface:
 
 ```shell
-git clone https://github.com/kehuanjack/python-can-agx-cando.git
+git clone https://github.com/agilexrobotics/python-can-agx-cando.git
 cd python-can-agx-cando
 pip3 install .
 ```
@@ -186,7 +186,7 @@ pip3 install python-can
 如果你想在 Windows 上使用本 SDK，必须先安装 `python-can-agx-cando` 插件，并使用 `agx_cando` 接口：
 
 ```shell
-git clone https://github.com/kehuanjack/python-can-agx-cando.git
+git clone https://github.com/agilexrobotics/python-can-agx-cando.git
 cd python-can-agx-cando
 pip3 install .
 ```
