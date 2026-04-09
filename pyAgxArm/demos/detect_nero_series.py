@@ -5,7 +5,7 @@ import time
 import argparse
 import os
 from platform import system
-from pyAgxArm import AgxArmFactory, create_agx_arm_config, PiperFW
+from pyAgxArm import AgxArmFactory, create_agx_arm_config, NeroFW
 
 
 def resolve_can_backend():
@@ -23,8 +23,7 @@ def resolve_can_backend():
 
 CAN_INTERFACE, DEFAULT_CAN_PORT = resolve_can_backend()
 
-parser = argparse.ArgumentParser(description="Piper Terminal Table Monitor")
-parser.add_argument("--robot", type=str, default="piper", help="robotic arm type")
+parser = argparse.ArgumentParser(description="Nero Terminal Table Monitor")
 parser.add_argument(
     "--can_port",
     type=str,
@@ -38,7 +37,7 @@ exit_flag = False
 startup_deadline = time.time() + 15.0
 
 robot_cfg = create_agx_arm_config(
-    robot=args.robot,
+    robot="nero",
     interface=CAN_INTERFACE,
     channel=args.can_port,
 )
@@ -48,20 +47,19 @@ robot.connect()
 while robot.get_firmware() is None:
     if time.time() >= startup_deadline:
         raise TimeoutError(f"Timed out waiting for firmware on channel {args.can_port}.")
+    robot.enable()
     print("Waiting for robot connection...")
     time.sleep(1)
 
 sv = robot.get_firmware()["software_version"]
-fw = PiperFW.DEFAULT
-if sv >= "S-V1.8-8":
-    fw = PiperFW.V188
-elif sv >= "S-V1.8-3":
-    fw = PiperFW.V183
+fw = NeroFW.DEFAULT
+if sv >= "1.11":
+    fw = NeroFW.V111
 
 robot.disconnect()
 
 robot_cfg = create_agx_arm_config(
-    robot=args.robot,
+    robot="nero",
     firmeware_version=fw,
     interface=CAN_INTERFACE,
     channel=args.can_port,
@@ -71,7 +69,7 @@ robot.connect()
 
 effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 
-print(f"Connected to {args.robot.capitalize()} with firmware {sv}, using config: {robot_cfg}")
+print(f"Connected to Nero with firmware {sv}, using config: {robot_cfg}")
 
 def clamp_refresh_rate(rate_hz):
     return max(0.5, min(rate_hz, 200.0))
@@ -92,25 +90,21 @@ def display_table(refresh_interval):
                     time.sleep(0.05)
                     continue
 
-                joint_angle_vel_limits = [robot.get_joint_angle_vel_limits(i) for i in range(1, robot.joint_nums + 1)]
-                if None in joint_angle_vel_limits:
-                    time.sleep(0.05)
-                    continue
+                # joint_angle_vel_limits = [robot.get_joint_angle_vel_limits(i) for i in range(1, robot.joint_nums + 1)]
+                # if None in joint_angle_vel_limits:
+                #     continue
 
-                joint_acc_limits = [robot.get_joint_acc_limits(i) for i in range(1, robot.joint_nums + 1)]
-                if None in joint_acc_limits:
-                    time.sleep(0.05)
-                    continue
+                # joint_acc_limits = [robot.get_joint_acc_limits(i) for i in range(1, robot.joint_nums + 1)]
+                # if None in joint_acc_limits:
+                #     continue
 
-                flange_vel_acc = robot.get_flange_vel_acc_limits()
-                if flange_vel_acc is None:
-                    time.sleep(0.05)
-                    continue
+                # flange_vel_acc = robot.get_flange_vel_acc_limits()
+                # if flange_vel_acc is None:
+                #     continue
 
-                crash_protection = robot.get_crash_protection_rating()
-                if crash_protection is None:
-                    time.sleep(0.05)
-                    continue
+                # crash_protection = robot.get_crash_protection_rating()
+                # if crash_protection is None:
+                #     continue
 
                 gripper_teaching_pendant_param = effector.get_gripper_teaching_pendant_param()
                 if gripper_teaching_pendant_param is None:
@@ -150,17 +144,12 @@ def display_table(refresh_interval):
                 continue
 
         except Exception as e:
-            raise RuntimeError(f"Failed to refresh Piper monitor output: {e}") from e
+            raise RuntimeError(f"Failed to refresh Nero monitor output: {e}") from e
 
         clear_terminal()
         print(time.strftime("%a %b %d %H:%M:%S %Y"))
         print(f"+{'='*107}+")
-        print(f"Software Ver : {firmware['software_version']:<10}"
-              f"\n"
-              f"Hardware Ver : {firmware['hardware_version']:<10}"
-              f"\n"
-              f"Producttion Date: {firmware['production_date']:<10}"
-              )
+        print(f"Software Ver : {firmware['software_version']:<10}")
 
         print(f"+{'-'*107}+\n"
               f"{'ArmStatus'} :\n"
@@ -229,40 +218,6 @@ def display_table(refresh_interval):
               f"{round(driver_states[3].msg.motor_temp):^15}"
               f"{round(driver_states[4].msg.motor_temp):^15}"
               f"{round(driver_states[5].msg.motor_temp):^15}|\n"
-              f"|{'max_spd(rad/s)':<16}|"
-              f"{round(joint_angle_vel_limits[0].msg.max_joint_spd, 3):^15}"
-              f"{round(joint_angle_vel_limits[1].msg.max_joint_spd, 3):^15}"
-              f"{round(joint_angle_vel_limits[2].msg.max_joint_spd, 3):^15}"
-              f"{round(joint_angle_vel_limits[3].msg.max_joint_spd, 3):^15}"
-              f"{round(joint_angle_vel_limits[4].msg.max_joint_spd, 3):^15}"
-              f"{round(joint_angle_vel_limits[5].msg.max_joint_spd, 3):^15}|\n"
-              f"|{'max_acc(rad/s^2)':<16}|"
-              f"{round(joint_acc_limits[0].msg.max_joint_acc, 3):^15}"
-              f"{round(joint_acc_limits[1].msg.max_joint_acc, 3):^15}"
-              f"{round(joint_acc_limits[2].msg.max_joint_acc, 3):^15}"
-              f"{round(joint_acc_limits[3].msg.max_joint_acc, 3):^15}"
-              f"{round(joint_acc_limits[4].msg.max_joint_acc, 3):^15}"
-              f"{round(joint_acc_limits[5].msg.max_joint_acc, 3):^15}|\n"
-              f"|{'collision_level':<16}|"
-              f"{round(crash_protection.msg[0]):^15}"
-              f"{round(crash_protection.msg[1]):^15}"
-              f"{round(crash_protection.msg[2]):^15}"
-              f"{round(crash_protection.msg[3]):^15}"
-              f"{round(crash_protection.msg[4]):^15}"
-              f"{round(crash_protection.msg[5]):^15}|\n"
-              f"|{'angle_limit(rad)':<16}|"
-              f"[{round(joint_angle_vel_limits[0].msg.min_angle_limit,3):<6},"
-              f"{round(joint_angle_vel_limits[0].msg.max_angle_limit, 3):<6}]"
-              f"[{round(joint_angle_vel_limits[1].msg.min_angle_limit,3):<6},"
-              f"{round(joint_angle_vel_limits[1].msg.max_angle_limit, 3):<6}]"
-              f"[{round(joint_angle_vel_limits[2].msg.min_angle_limit,3):<6},"
-              f"{round(joint_angle_vel_limits[2].msg.max_angle_limit, 3):<6}]"
-              f"[{round(joint_angle_vel_limits[3].msg.min_angle_limit,3):<6},"
-              f"{round(joint_angle_vel_limits[3].msg.max_angle_limit, 3):<6}]"
-              f"[{round(joint_angle_vel_limits[4].msg.min_angle_limit,3):<6},"
-              f"{round(joint_angle_vel_limits[4].msg.max_angle_limit, 3):<6}]"
-              f"[{round(joint_angle_vel_limits[5].msg.min_angle_limit,3):<6},"
-              f"{round(joint_angle_vel_limits[5].msg.max_angle_limit, 3):<6}]|\n"
               f"|{'status----------':<16}|{'-'*90:^}|\n"
               f"|{'low_vol_err':<16}|"
               f"{str(driver_states[0].msg.foc_status.voltage_too_low):^15}"
@@ -343,23 +298,11 @@ def display_table(refresh_interval):
               f"{round(flange_pose.msg[0], 3):<9}"
               f"{round(flange_pose.msg[1], 3):<9}"
               f"{round(flange_pose.msg[2], 3):<9}|"
-              f"{'max_linear_vel':^20}"
-              f"{round(flange_vel_acc.msg.end_max_linear_vel, 3):^7}"
-              f"{'m/s':<5}|"
-              f"{'max_angular_vel':^20}"
-              f"{round(flange_vel_acc.msg.end_max_angular_vel, 3):^7}"
-              f"{'rad/s':<8}|"
               f"\n"
               f"{'rpy(rad)':<12}"
               f"{round(flange_pose.msg[3], 3):<9}"
               f"{round(flange_pose.msg[4], 3):<9}"
               f"{round(flange_pose.msg[5], 3):<9}|"
-              f"{'max_linear_acc':^20}"
-              f"{round(flange_vel_acc.msg.end_max_linear_acc, 3):^7}"
-              f"{'m/s^2':<5}|"
-              f"{'max_angular_acc':^20}"
-              f"{round(flange_vel_acc.msg.end_max_angular_acc, 3):^7}"
-              f"{'rad/s^2':<8}|"
               )
         unit = "m" if gripper_status.msg.mode == "width" else "deg"
         print(f"+{'-'*107}+\n"
