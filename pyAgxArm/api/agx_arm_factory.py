@@ -4,26 +4,18 @@ from typing import Type, Dict, TypeVar
 from typing_extensions import Literal
 from .constants import ROBOT_OPTION_FIELDS, ROBOT_JOINT_LIMIT_PRESET, ROBOT_JOINT_NAME
 from ..protocols.can_protocol.comms import *
-from ..protocols.can_protocol.drivers.piper import (
+from ..protocols.can_protocol.drivers import (
+    NeroDriverDefault,
+    NeroDriverV111,
     PiperDriverDefault,
     PiperDriverV183,
     PiperDriverV188,
-)
-from ..protocols.can_protocol.drivers.nero import (
-    NeroDriverDefault,
-    NeroDriverV111,
-)
-from ..protocols.can_protocol.drivers.piper_h import (
     PiperHDriverDefault,
     PiperHDriverV183,
     PiperHDriverV188,
-)
-from ..protocols.can_protocol.drivers.piper_l import (
     PiperLDriverDefault,
     PiperLDriverV183,
     PiperLDriverV188,
-)
-from ..protocols.can_protocol.drivers.piper_x import (
     PiperXDriverDefault,
     PiperXDriverV183,
     PiperXDriverV188,

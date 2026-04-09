@@ -1,26 +1,18 @@
 # agx_arm_factory.pyi
 from typing_extensions import Literal
 from typing import Any, TypeVar, overload
-from ..protocols.can_protocol.drivers.piper import (
+from ..protocols.can_protocol.drivers import (
+    NeroDriverDefault,
+    NeroDriverV111,
     PiperDriverDefault,
     PiperDriverV183,
     PiperDriverV188,
-)
-from ..protocols.can_protocol.drivers.nero import (
-    NeroDriverDefault,
-    NeroDriverV111,
-)
-from ..protocols.can_protocol.drivers.piper_h import (
     PiperHDriverDefault,
     PiperHDriverV183,
     PiperHDriverV188,
-)
-from ..protocols.can_protocol.drivers.piper_l import (
     PiperLDriverDefault,
     PiperLDriverV183,
     PiperLDriverV188,
-)
-from ..protocols.can_protocol.drivers.piper_x import (
     PiperXDriverDefault,
     PiperXDriverV183,
     PiperXDriverV188,
