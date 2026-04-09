@@ -7,12 +7,12 @@ from ....piper.default import (
 class ArmMsgFeedbackHighSpd(ArmMsgFeedbackHighSpdBase):
     '''
     feedback
-    
+
     驱动器信息高速反馈 0x5
 
     节点 ID:
         0x1~0x07
-    
+
     CAN ID:
         0X251~0x257
 
@@ -20,8 +20,8 @@ class ArmMsgFeedbackHighSpd(ArmMsgFeedbackHighSpdBase):
         velocity: 电机当前转速
         current: 电机当前电流
         position: 电机当前位置
-        effort: 经过固定系数转换的力矩,单位0.001N/m
-    
+        torque: 关节侧真实力矩（由电流线性拟合再按减速比折算）,单位 N·m
+
     位描述:
 
         Byte 0: 转速高八位, int16, 电机当前转速 单位: 0.001rad/s
@@ -35,7 +35,7 @@ class ArmMsgFeedbackHighSpd(ArmMsgFeedbackHighSpdBase):
     '''
     '''
     feedback
-    
+
     High-Speed Feedback of Drive Information 0x5
 
     Node ID:
@@ -48,9 +48,8 @@ class ArmMsgFeedbackHighSpd(ArmMsgFeedbackHighSpdBase):
         velocity: Motor Speed.
         current: Motor Current.
         position: Motor Position.
-        effort: Torque converted using a fixed coefficient, with a unit of 0.001 N/m.
+        torque: Joint-side true torque from current linear fit and gear ratio, N·m.
 
-    
     Bit Description:
 
         Byte 0: Motor Speed (High Byte), int16, unit: 0.001rad/s
@@ -62,8 +61,35 @@ class ArmMsgFeedbackHighSpd(ArmMsgFeedbackHighSpdBase):
         Byte 6: Motor Position (Second Least Significant Byte)
         Byte 7: Motor Position (Least Significant Byte)
     '''
-    _VALID_CAN_ID_1 = [0x251, 0x252, 0x253, 0x254, 0x255, 0x256, 0x257]
-    _VALID_CAN_ID_2 = []
+    # torque_motor ≈ slope * I_A；T_torque(关节侧) = torque_motor / gear。
+    _TORQUE_FROM_CURRENT_SLOPE_PER_MA = {
+        0x251: 1.6540046234412886,
+        0x252: 1.6549424877215086,
+        0x253: 2.101634469945503,
+        0x254: 2.0986548798072384,
+        0x255: 2.6357843505164102,
+        0x256: 2.6357843505164102,
+        0x257: 2.6357843505164102,
+    }
+    _TORQUE_GEAR_RATIO = {
+        0x251: 0.35,
+        0x252: 0.35,
+        0x253: 0.5,
+        0x254: 0.5,
+        0x255: 1.5,
+        0x256: 1.5,
+        0x257: 1.61,
+    }
+
+    @property
+    def torque(self) -> float:
+        cid = self._VALID_CAN_ID
+        slope = self._TORQUE_FROM_CURRENT_SLOPE_PER_MA.get(cid)
+        if slope is None:
+            return 0.0
+        gear = self._TORQUE_GEAR_RATIO[cid]
+        torque_motor = slope * self.current
+        return torque_motor / gear
 
 class ArmMsgFeedbackHighSpd1(ArmMsgFeedbackHighSpd):
     '''CAN ID:
@@ -113,4 +139,3 @@ class ArmMsgFeedbackAllHighSpd(ArmMsgFeedbackAllHighSpdBase):
                  joint_7 = ArmMsgFeedbackHighSpd()):
         super().__init__(joint_1, joint_2, joint_3, joint_4, joint_5, joint_6)
         self.joint_7 = joint_7
-        
