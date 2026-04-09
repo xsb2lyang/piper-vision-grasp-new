@@ -4,7 +4,7 @@ from typing_extensions import (
     Literal,
 )
 from enum import unique
-from ....core import IntEnumBase, EnumBase
+from ....core import IntEnumBase
 from ....core import AttributeBase
 
 class ArmMsgModeCtrl(AttributeBase):

@@ -41,7 +41,7 @@ class ArmMsgFeedbackStatusEnum:
         MOVE_J = 0x01
         MOVE_L = 0x02
         MOVE_C = 0x03
-        MOVE_MIT = 0x04
+        MOVE_MIT = 0x04  # Piper firmware < v188; v188+ uses 0x06
         MOVE_CPV = 0x05
         UNKNOWN = 0xFF
     @unique
@@ -112,8 +112,9 @@ class ArmMsgFeedbackStatus(AttributeBase):
             0x01 MOVE J
             0x02 MOVE L
             0x03 MOVE C
-            0x04 MOVE MIT ---基于V1.5-2版本后
+            0x04 MOVE MIT ---旧编码（Piper firmware < v188）
             0x05 MOVE_CPV ---基于V1.6.5版本后
+            0x06 MOVE_MIT ---新编码（Piper firmware >= v188；见 v188 反馈状态实现）
         Byte 3:示教状态,uint8 
             0x00 关闭
             0x01 开始示教记录（进入拖动示教模式）
@@ -197,8 +198,9 @@ class ArmMsgFeedbackStatus(AttributeBase):
             0x01: MOVE J
             0x02: MOVE L
             0x03: MOVE C
-            0x04: MOVE MIT
+            0x04: MOVE MIT (old encoding, Piper firmware < v188)
             0x05: MOVE_CPV
+            0x06: MOVE MIT (new encoding, Piper firmware >= v188; see v188 feedback implementation)
         Byte 3: Teaching status, uint8
             0x00: Off
             0x01: Start teaching record (enter drag teaching mode)

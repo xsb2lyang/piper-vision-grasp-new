@@ -14,6 +14,10 @@ class ArmMsgLeaderFollowerModeConfig(AttributeBase):
     CAN ID:
         0x470
     
+    .. note::
+        当前固件上 **Byte 1–3（反馈/控制/联动地址偏移）已废弃**，SDK 发送时固定为 0x00；
+        以下字段说明保留作历史协议参考。
+    
     Args:
         linkage_config: 联动设置指令
         feedback_offset: 反馈指令偏移值
@@ -46,6 +50,10 @@ class ArmMsgLeaderFollowerModeConfig(AttributeBase):
 
     CAN ID:
         0x470
+
+    .. note::
+        On current firmware, **bytes 1–3 (offset fields) are deprecated**; the driver
+        always transmits **0x00** for each. Field descriptions below are kept for legacy docs.
 
     Args:
         linkage_config: Linkage setting command.
