@@ -9,4 +9,4 @@ dist
 build
 *.so
 temp
-.VSCodeCounter
+.pytest_cache/

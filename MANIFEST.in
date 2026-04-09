@@ -1,8 +1,13 @@
 include LICENSE
-include *.sh
 include *.md
-include pyAgxArm/*.md
-include pyAgxArm/*.sh
-include pyAgxArm/LICENSE
+include *.sh
+graft asserts
+graft docs
+graft pyAgxArm/configs
+graft pyAgxArm/demos
+graft pyAgxArm/extensions
+graft pyAgxArm/scripts
 
-recursive-include pyAgxArm/asserts *
+prune .github
+prune .vscode
+global-exclude *.py[cod] __pycache__ .DS_Store
