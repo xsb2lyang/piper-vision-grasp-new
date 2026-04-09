@@ -1,4 +1,5 @@
 import copy
+import warnings
 from typing import Optional, Callable, TypeVar
 
 from .parser import Parser
@@ -43,7 +44,18 @@ class Driver:
         if isinstance(msg, AttributeBase):
             data = self._parser.pack(msg)
             if data is not None:
-                self._ctx.get_comm().send(data)
+                comm = self._ctx.get_comm()
+                if comm is None:
+                    raise RuntimeError(
+                        "Robot is not connected (comm is None). "
+                        "Call `connect()` before sending effector commands."
+                    )
+                try:
+                    comm.send(data)
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Failed to send {type(msg).__name__} on channel '{comm.get_channel()}': {exc}"
+                    ) from exc
         else:
             raise TypeError("msg must be AttributeBase")
 
@@ -185,7 +197,7 @@ class Driver:
 
         Message
         -------
-        `width`: Current gripper width, unit: m
+        `value`: Current gripper width/angle, unit: m/deg
 
         `force`: Current gripper force, unit: N
 
@@ -199,11 +211,15 @@ class Driver:
         - `driver_enable_status`: Driver enable status, type: bool
         - `homing_status`: Zeroing status, type: bool
 
+        `mode`: Gripper control mode, type: str
+        - `width`: Gripper width control mode
+        - `angle`: Gripper angle control mode
+
         Examples
         --------
         >>> gs = end_effector.get_gripper_status()
         >>> if gs is not None:
-        >>>     print(gs.msg.width, gs.msg.force)
+        >>>     print(gs.msg.value, gs.msg.force)
         >>>     print(gs.hz, gs.timestamp)
         """
         gs: Optional[MessageAbstract[ArmMsgFeedbackGripper]] = getattr(
@@ -227,7 +243,7 @@ class Driver:
 
         Message
         -------
-        `width`: Current gripper width, unit: m
+        `value`: Current gripper width/angle, unit: m/deg (depends on status_code)
 
         `force`: Current gripper force, unit: N
 
@@ -239,7 +255,7 @@ class Driver:
         --------
         >>> gcs = end_effector.get_gripper_ctrl_states()
         >>> if gcs is not None:
-        >>>     print(gcs.msg.width, gcs.msg.force)
+        >>>     print(gcs.msg.value, gcs.msg.force)
         >>>     print(gcs.hz, gcs.timestamp)
         """
         gcs: Optional[MessageAbstract[ArmMsgGripperCtrl]] = getattr(
@@ -268,9 +284,46 @@ class Driver:
         >>> if end_effector.disable_gripper():
         >>>     print("Gripper disabled")
         """
-        self._send_msg(ArmMsgGripperCtrl(status_code=0))
-        gs = self.get_gripper_status()
+        gs: Optional[MessageAbstract[ArmMsgFeedbackGripper]] = getattr(
+            self._parser, "gripper", None
+        )
         if gs is not None:
+            mode = gs.msg.mode
+            if mode == "angle":
+                self._send_msg(ArmMsgGripperCtrl(status_code=4))
+            elif mode == "width":
+                self._send_msg(ArmMsgGripperCtrl(status_code=0))
+            return not gs.msg.foc_status.driver_enable_status
+        self._send_msg(ArmMsgGripperCtrl(status_code=0))
+        return False
+    
+    def reset_gripper(self) -> bool:
+        """
+        Reset the gripper.
+
+        Returns
+        -------
+        bool
+            True if the gripper is reset, False otherwise.
+
+        Notes
+        -----
+        This API infers the result from feedback.
+
+        Examples
+        --------
+        >>> if end_effector.reset_gripper():
+        >>>     print("Gripper reset")
+        """
+        gs: Optional[MessageAbstract[ArmMsgFeedbackGripper]] = getattr(
+            self._parser, "gripper", None
+        )
+        if gs is not None:
+            mode = gs.msg.mode
+            if mode == "angle":
+                self._send_msg(ArmMsgGripperCtrl(status_code=6))
+            else:
+                self._send_msg(ArmMsgGripperCtrl(status_code=2))
             return not gs.msg.foc_status.driver_enable_status
         return False
 
@@ -290,7 +343,7 @@ class Driver:
         >>> end_effector.disable_gripper()
         >>> input("Please move the gripper to the zero position...")
         >>> if end_effector.calibrate_gripper():
-        >>>     end_effector.move_gripper(width=0.0)
+        >>>     end_effector.move_gripper_m(value=0.0)
         """
         self._ctx._validate_timeout(timeout)
 
@@ -298,7 +351,6 @@ class Driver:
             self._send_msg(ArmMsgGripperCtrl(set_zero=0xAE))
 
         def get_value() -> bool:
-            # 0x476 byte1: is_set_zero_successfully
             resp: Optional[MessageAbstract[ArmMsgFeedbackRespSetInstruction]] = \
                 getattr(self._parser, "resp_set_instruction", None)
             return resp is not None and resp.msg.is_set_zero_successfully == 1
@@ -313,33 +365,73 @@ class Driver:
         )
         return bool(res)
 
-    def move_gripper(self, width: float = 0.0, force: float = 1.0) -> None:
+    def move_gripper_m(self, value: float = 0.0, force: float = 1.0) -> None:
         """
         Move the gripper to the target width and force.
 
         Parameters
         ----------
-        `width`: float, optional
-        - Width of the gripper in meters. Range: [0.0, 0.1]. Default is 0.0.
+        `value`: float, optional
+        - Width of the gripper in meters. Default is 0.0.
             (Numerical precision: 1e-6 m)
 
         `force`: float, optional
-        - Force of the gripper in N. Range: [0.0, 3.0]. Default is 1.0.
+        - Force of the gripper in N. Default is 1.0.
             (Numerical precision: 1e-3 N)
 
         Examples
         --------
-        >>> end_effector.move_gripper(width=0.05, force=1.0)
+        >>> end_effector.move_gripper_m(value=0.05, force=1.0)
         """
-        if width < 0.0 or width > 0.1:
-            raise ValueError("Width should be between 0.0 and 0.1 in m")
-        if force < 0.0 or force > 3.0:
-            raise ValueError("Force should be between 0.0 and 3.0 in N")
-
-        width_i = round(width * 1e6)
+        if force < 0.0:
+            raise ValueError("Force should be greater than 0.0")
+        
+        value_i = round(value * 1e6)
         force_i = round(force * 1e3)
         self._send_msg(ArmMsgGripperCtrl(
-            width=width_i, force=force_i, status_code=1))
+            value=value_i, force=force_i, status_code=1))
+        
+    def move_gripper_deg(self, value: float = 0.0, force: float = 1.0) -> None:
+        """
+        Move the gripper to the target angle and force.
+
+        Parameters
+        ----------
+        `value`: float, optional
+        - Angle of the gripper in degrees. Default is 0.0.
+            (Numerical precision: 1e-3 deg)
+
+        `force`: float, optional
+        - Force of the gripper in N. Default is 1.0.
+            (Numerical precision: 1e-3 N)
+
+        Examples
+        --------
+        >>> end_effector.move_gripper_deg(value=5, force=1.0)
+        """
+        if force < 0.0:
+            raise ValueError("Force should be greater than 0.0")
+        
+        value_i = round(value * 1e3)
+        force_i = round(force * 1e3)
+        self._send_msg(ArmMsgGripperCtrl(
+            value=value_i, force=force_i, status_code=5))
+
+    def move_gripper(self, width: float = 0.0, force: float = 1.0) -> None:
+        """
+        Deprecated: same as ``move_gripper_m(value=width, force=force)`` (width mode only).
+
+        This alias is kept for backward compatibility. Prefer ``move_gripper_m`` or
+        ``move_gripper_deg``; this method may be removed in a future release.
+        """
+        warnings.warn(
+            "move_gripper(width=..., force=...) is deprecated and will be removed in a "
+            "future release; use move_gripper_m(value=..., force=...) for width mode or "
+            "move_gripper_deg(value=..., force=...) for angle mode.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.move_gripper_m(value=width, force=force)
 
     def get_gripper_teaching_pendant_param(
         self, timeout: float = 1.0, min_interval: float = 1.0

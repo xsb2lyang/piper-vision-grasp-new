@@ -20,20 +20,26 @@ class ArmMsgGripperCtrl(AttributeBase):
     Notes
     -----
     Payload layout (8 bytes):
-    - Byte 0-3: width_um (int32), unit: µm
-      - Physical: width_m = width_um * 1e-6
+    - Byte 0-3: width_µm/angle_mdeg (int32), unit: µm/mdeg
+      - width_m = width_µm * 1e-6
+      - angle_deg = angle_mdeg * 1e-3
     - Byte 4-5: force_mN (int16), unit: mN
-      - Physical: force_N = force_mN * 1e-3
+      - force_N = force_mN * 1e-3
     - Byte 6: status_code (uint8)
-      - 0x00: disable gripper (driver disable)
-      - 0x01: execute width/force control
-      - 0x02, 0x03: reserved (protocol-defined)
-    - Byte 7: set_zero (uint8)
+      - 0x00: disable/width
+      - 0x01: enable/width
+      - 0x02: disable/clear/width
+      - 0x03: enable/clear/width
+      - 0x04: disable/angle
+      - 0x05: enable/angle
+      - 0x06: disable/clear/angle
+      - 0x07: enable/clear/angle
+    - Byte 7: set_zero 
       - 0xAE: set current position as zero
       - 0x00: no-op
 
     Args:
-        width: raw integer width in µm (NOT meters).
+        value: raw integer width/angle in µm/mdeg (NOT meters/degrees).
         force: raw integer force in mN (NOT Newton).
         status_code: see above.
         set_zero: 0xAE triggers zeroing.
@@ -41,23 +47,21 @@ class ArmMsgGripperCtrl(AttributeBase):
 
     def __init__(
         self,
-        width: Union[int, float] = 0,
+        value: Union[int, float] = 0,
         force: Union[int, float] = 0,
-        status_code: Literal[0x00, 0x01, 0x02, 0x03] = 0,
+        status_code: Literal[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07] = 0,
         set_zero: Literal[0x00, 0xAE] = 0,
     ):
-        if status_code not in [0x00, 0x01, 0x02, 0x03]:
+        if status_code not in [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]:
             raise ValueError(
                 f"'status_code' Value {status_code} out of range "
-                "[0x00, 0x01, 0x02, 0x03]"
+                "[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]"
             )
-        if not (0 <= force <= 3000):
-            raise ValueError(f"'force' Value {force} out of range 0-3000")
         if set_zero not in [0x00, 0xAE]:
             raise ValueError(
                 f"'set_zero' Value {set_zero} out of range [0x00,0xAE]"
             )
-        self.width = width
+        self.value = value
         self.force = force
         self.status_code = status_code
         self.set_zero = set_zero
