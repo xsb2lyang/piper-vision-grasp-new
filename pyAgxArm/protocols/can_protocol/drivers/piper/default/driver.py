@@ -89,10 +89,21 @@ class Driver(ArmDriverAbstract):
         super().__init__(config)
         self._parser: Parser = self._parser
         self._msg_mode = self._MSG_ModeCtrl()
+        auto_set_motion_mode = self._config.get("auto_set_motion_mode", True)
+        if not isinstance(auto_set_motion_mode, bool):
+            raise ValueError("Config `auto_set_motion_mode` should be bool")
+        self._auto_set_motion_mode = auto_set_motion_mode
 
     def _set_mode(self) -> None:
         """Send cached mode message (`self._msg_mode`) to the controller."""
         self._send_msg(self._msg_mode)
+
+    def _maybe_set_motion_mode(
+        self, motion_mode: Literal['p', 'j', 'l', 'c', 'mit', 'js']
+    ) -> None:
+        """Set motion mode only when auto mode-setting is enabled."""
+        if self._auto_set_motion_mode:
+            self.set_motion_mode(motion_mode)
 
     def _deal_move_p_msgs(self, pose: List[float]):
         """Get pose control messages."""
@@ -803,7 +814,16 @@ class Driver(ArmDriverAbstract):
             send_disable_msg(joint_index)
             return not self.get_joint_enable_status(joint_index=joint_index)
 
-    # -------------------- Reset and Emergency Stop --------------------
+    # -------------------- Emergency Stop and Reset --------------------
+
+    def electronic_emergency_stop(self):
+        """Trigger a damped emergency stop.
+
+        Initiates a controlled emergency stop by applying damping to all joints
+        and allowing rapid deceleration without mechanical shock.
+        """
+        msg = ArmMsgMotionCtrl(1)
+        self._send_msg(msg)
 
     def reset(self):
         """Reset motion controller state.
@@ -816,15 +836,6 @@ class Driver(ArmDriverAbstract):
         >>> robot.reset()
         """
         msg = ArmMsgMotionCtrl(2)
-        self._send_msg(msg)
-
-    def electronic_emergency_stop(self):
-        """Trigger a damped emergency stop.
-
-        Initiates a controlled emergency stop by applying damping to all joints
-        and allowing rapid deceleration without mechanical shock.
-        """
-        msg = ArmMsgMotionCtrl(1)
         self._send_msg(msg)
 
     # -------------------------- Set --------------------------
@@ -959,7 +970,7 @@ class Driver(ArmDriverAbstract):
         msgs = self._deal_move_p_msgs(pose)
 
         # Set motion mode and send commands
-        self.set_motion_mode('p')
+        self._maybe_set_motion_mode('p')
         self._send_msgs(msgs)
 
     def move_j(self, joints: List[float]):
@@ -986,7 +997,7 @@ class Driver(ArmDriverAbstract):
         msgs = self._deal_move_j_msgs(joints)
 
         # Set motion mode and send commands
-        self.set_motion_mode('j')
+        self._maybe_set_motion_mode('j')
         self._send_msgs(msgs)
 
     def move_js(self, joints: List[float]):
@@ -1029,7 +1040,7 @@ class Driver(ArmDriverAbstract):
         msgs = self._deal_move_j_msgs(joints)
 
         # Set motion mode and send commands
-        self.set_motion_mode('js')
+        self._maybe_set_motion_mode('js')
         self._send_msgs(msgs)
 
     def move_l(self, pose: List[float]):
@@ -1063,7 +1074,7 @@ class Driver(ArmDriverAbstract):
         msgs = self._deal_move_p_msgs(pose)
 
         # Set motion mode and send commands
-        self.set_motion_mode('l')
+        self._maybe_set_motion_mode('l')
         self._send_msgs(msgs)
 
     def move_c(
@@ -1111,7 +1122,7 @@ class Driver(ArmDriverAbstract):
         msgs.append(self._parser._make_circular_coord_num_update_msg(0x03))
 
         # Set motion mode and send commands
-        self.set_motion_mode('c')
+        self._maybe_set_motion_mode('c')
         self._send_msgs(msgs)
 
     def move_mit(
@@ -1157,9 +1168,11 @@ class Driver(ArmDriverAbstract):
             (Numerical precision: 2.442002442002442e-3)
 
         `t_ff`: float, optional
-        - Feed-forward torque reference (unit: N·m). Range: [-8.0, 8.0].
-          Default is
-            0.0. (Numerical precision: 6.274509803921569e-2 N·m)
+        - Feed-forward torque reference (unit: N·m). Default is 0.0.
+          Joint 1-3: Range [-32.0, 32.0].
+            (Numerical precision: 2.509803921568627e-1 N·m)
+          Joint 4-6: Range [-8.0, 8.0].
+            (Numerical precision: 6.274509803921569e-2 N·m)
 
         Raises
         ------
@@ -1235,13 +1248,23 @@ class Driver(ArmDriverAbstract):
                 f"joint {joint_index} limits [-5.0, 5.0]. "
             )
             kd = Validator.clamp(kd, -5.0, 5.0)
-        
-        if not Validator.is_within_limit(t_ff, -8.0, 8.0):
+
+        if joint_index in (1, 2, 3):
+            t_ff_min = -32.0
+            t_ff_max = 32.0
+        else:
+            t_ff_min = -8.0
+            t_ff_max = 8.0
+
+        if not Validator.is_within_limit(t_ff, t_ff_min, t_ff_max):
             print(
                 f"Warning: Feed-forward torque {t_ff} N·m is outside "
-                f"joint {joint_index} limits [-8.0, 8.0]. "
+                f"joint {joint_index} limits [{t_ff_min}, {t_ff_max}]. "
             )
-            t_ff = Validator.clamp(t_ff, -8.0, 8.0)
+            t_ff = Validator.clamp(t_ff, t_ff_min, t_ff_max)
+        
+        if joint_index in (1, 2, 3):
+            t_ff *= 0.25
 
         p_des = nc.FloatToUint(p_des, -12.5, 12.5, 16)
         v_des = nc.FloatToUint(v_des, -45.0, 45.0, 12)
@@ -1259,7 +1282,7 @@ class Driver(ArmDriverAbstract):
         )
 
         # Set motion mode and send commands
-        self.set_motion_mode('mit')
+        self._maybe_set_motion_mode('mit')
         self._send_msg(msg)
 
     # -------------------------- Leader-Follower --------------------------
@@ -1304,6 +1327,19 @@ class Driver(ArmDriverAbstract):
           to restore the leader arm to the zero force drag mode.
         """
         msg = ArmMsgLeaderArmMoveToHome(mode=1)
+        self._send_msg(msg)
+
+    def move_leader_follower_to_home(self):
+        """Move both leader and follower arms to the home position together.
+
+        Notes
+        -----
+        - This function will send a message to the controller to move both the
+          leader and follower arms to the home position together.
+        - After calling this function, you must call `restore_leader_drag_mode`
+          to restore the leader-follower arm mode (zero force drag for leader).
+        """
+        msg = ArmMsgLeaderArmMoveToHome(mode=2)
         self._send_msg(msg)
 
     def restore_leader_drag_mode(self):
@@ -1804,10 +1840,6 @@ class Driver(ArmDriverAbstract):
         self._ctx._validate_timeout(timeout)
         if joint_index not in self._JOINT_INDEX_LIST:
             raise ValueError(f"Joint index should be {self._JOINT_INDEX_LIST}")
-        # if max_joint_spd is not None and (
-        #     max_joint_spd < 0.0 or max_joint_spd > 3.0
-        # ):
-        #     raise ValueError("Maximum joint speed should be between 0.0 and 3.0")
 
         if joint_index == 255:
             return self._all_joints_bool(
@@ -1899,12 +1931,6 @@ class Driver(ArmDriverAbstract):
         self._ctx._validate_timeout(timeout)
         if joint_index not in self._JOINT_INDEX_LIST:
             raise ValueError(f"Joint index should be {self._JOINT_INDEX_LIST}")
-        # if max_joint_acc is not None and (
-        #     max_joint_acc < 0.0 or max_joint_acc > 12.56
-        # ):
-        #     raise ValueError(
-        #         "Maximum joint acceleration should be between 0.0 and 12.56"
-        #     )
 
         if joint_index == 255:
             return self._all_joints_bool(
@@ -2063,10 +2089,6 @@ class Driver(ArmDriverAbstract):
         """
         # Input validation
         self._ctx._validate_timeout(timeout)
-        # if max_linear_vel is not None and (
-        #     max_linear_vel < 0.0 or max_linear_vel > 3.0
-        # ):
-        #     raise ValueError("Maximum linear velocity should be between 0.0 and 3.0")
 
         # Clear previous response
         self._clear_resp_set_instruction()

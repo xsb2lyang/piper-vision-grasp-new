@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 class ArmDriverInterface(ABC):
 
@@ -7,11 +8,15 @@ class ArmDriverInterface(ABC):
         ...
     
     @abstractmethod
-    def create_comm(self):
+    def create_comm(self, config: Optional[dict] = None, comm: str = "can"):
         ...
 
     @abstractmethod
     def connect(self, **kwargs) -> None:
+        ...
+
+    @abstractmethod
+    def disconnect(self, **kwargs) -> None:
         ...
     
     @abstractmethod

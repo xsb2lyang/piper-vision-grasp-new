@@ -2,18 +2,23 @@
 ROBOT_OPTION_FIELDS = {
     "nero": {
         "joint_limits",
+        "auto_set_motion_mode",
     },
     "piper": {
         "joint_limits",
+        "auto_set_motion_mode",
     },
     "piper_h": {
         "joint_limits",
+        "auto_set_motion_mode",
     },
     "piper_l": {
         "joint_limits",
+        "auto_set_motion_mode",
     },
     "piper_x": {
         "joint_limits",
+        "auto_set_motion_mode",
     },
 }
 # ---------- 预定义机械臂关节名字 ----------

@@ -1,12 +1,12 @@
 import threading
 from typing import Optional, TYPE_CHECKING, overload, List
 
-from typing_extensions import Literal, Final
+from typing_extensions import Literal
 from .arm_driver_interface import ArmDriverInterface
 from .driver_context import DriverContext
 from ...msgs.core import AttributeBase, MessageAbstract
 from .protocol_parser_interface import ProtocolParserInterface
-from .protocol_parser_abstract import DriverAPIOptions, DriverAPIProtoAdapter
+from .protocol_parser_abstract import DriverAPIOptions
 from ..core.arm_driver_context import ArmDriverContext
 from .....utiles.vaildator import Validator
 from .....utiles.tf import (
@@ -63,7 +63,18 @@ class ArmDriverAbstract(ArmDriverInterface):
         if isinstance(msg, AttributeBase):
             data = self._parser.pack(msg)
             if data is not None:
-                self._ctx.get_comm().send(data)
+                comm = self._ctx.get_comm()
+                if comm is None:
+                    raise RuntimeError(
+                        "Robot is not connected (comm is None). "
+                        "Call `connect()` before sending commands."
+                    )
+                try:
+                    comm.send(data)
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Failed to send {type(msg).__name__} on channel '{comm.get_channel()}': {exc}"
+                    ) from exc
         else:
             raise TypeError(
                 "msg must be AttributeBase"
@@ -154,23 +165,56 @@ class ArmDriverAbstract(ArmDriverInterface):
     def get_driver_version(self):
         raise NotImplementedError
 
-    def create_comm(self, config: dict = {}, comm: str = "can"):
+    def create_comm(self, config: Optional[dict] = None, comm: str = "can"):
         return self._ctx.create_comm(config, comm)
 
     def connect(self, start_read_thread: bool = True) -> None:
-        if not self._ctx.get_comm():
-            self._ctx.init_comm()
-        if self._ctx.get_comm() is None:
+        """
+        Initialize and connect the underlying communication, optionally
+        starting background reader/monitor/FPS threads.
+
+        This method is idempotent: repeated calls while already connected
+        will be ignored. Use `disconnect()` to stop threads and close comm
+        when the driver instance is no longer needed.
+        """
+        comm = self._ctx.get_comm()
+        if comm is None:
+            comm = self._ctx.init_comm()
+        if comm is None:
             raise ValueError("comm is None")
+        if not comm.is_connected():
+            comm.connect()
+        if not comm.is_connected():
+            raise RuntimeError("Failed to establish robot communication.")
         with self._lock:
             if self._connected:
                 return
-            self._connected = self._ctx.get_comm().is_connected()
+            self._connected = True
         if start_read_thread:
             self._ctx.start_th()
 
+    def disconnect(self, join_timeout: float = 1.0) -> None:
+        """
+        Disconnect from the arm and release underlying threads and CAN resources.
+
+        This method is idempotent and can be safely called when the arm
+        instance is no longer needed, e.g. after reading firmware version
+        and before creating a new instance.
+        """
+        with self._lock:
+            if not self._connected and (not self._ctx.get_comm() or self._ctx.get_comm().is_stopped()):
+                # Already disconnected or fully stopped
+                return
+            self._connected = False
+
+        # Stop internal DriverContext threads and FPS manager, and close comm
+        self._ctx.shutdown(join_timeout=join_timeout)
+
     def is_connected(self) -> bool:
-        return self._ctx.get_comm().is_connected()
+        comm = self._ctx.get_comm()
+        if comm is None:
+            return False
+        return comm.is_connected()
 
     def is_ok(self):
         return self._arm_ctx.is_ok()
@@ -182,10 +226,16 @@ class ArmDriverAbstract(ArmDriverInterface):
         return self._config
 
     def get_type(self):
-        return self._ctx.get_comm().get_type()
+        comm = self._ctx.get_comm()
+        if comm is None:
+            return None
+        return comm.get_type()
 
     def get_channel(self):
-        return self._ctx.get_comm().get_channel()
+        comm = self._ctx.get_comm()
+        if comm is None:
+            return None
+        return comm.get_channel()
 
     def get_joint_angles(self):
         raise NotImplementedError
