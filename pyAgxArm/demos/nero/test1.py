@@ -23,7 +23,7 @@ def create_demo_config():
     if platform_system == "Windows":
         return create_agx_arm_config(
             robot=ArmModel.NERO,
-            firmeware_version=NeroFW.V111,
+            firmeware_version=NeroFW.DEFAULT,
             interface="agx_cando",
             channel="0",
             # auto_set_motion_mode=False,
