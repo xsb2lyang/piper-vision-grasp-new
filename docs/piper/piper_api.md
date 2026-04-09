@@ -6,10 +6,14 @@
 
 - [Switch to 中文](#piper-机械臂-api-使用文档)
 - [Import Module](#import-module)
+- [Firmware Version](#firmware-version)
+  - [Version List](#version-list)
+  - [How to Choose](#how-to-choose)
 - [Create Instance and Connect](#create-instance-and-connect)
   - [Create Configuration — create_agx_arm_config()](#create-configuration--create_agx_arm_config)
   - [Create Arm Driver Instance — AgxArmFactory.create_arm()](#create-arm-driver-instance--agxarmfactorycreate_arm)
   - [Connect — connect()](#connect--connect)
+  - [Disconnect — disconnect()](#disconnect--disconnect)
   - [Initialize End Effector — init_effector()](#initialize-end-effector--init_effector)
 - [General Status](#general-status)
   - [Get Joint Count — joint_nums](#get-joint-count--joint_nums)
@@ -39,13 +43,14 @@
   - [Set Leader Mode — set_leader_mode()](#set-leader-mode--set_leader_mode)
   - [Set Follower Mode — set_follower_mode()](#set-follower-mode--set_follower_mode)
   - [Move Leader to Home — move_leader_to_home()](#move-leader-to-home--move_leader_to_home)
+  - [Move Leader & Follower to Home — move_leader_follower_to_home()](#move-leader--follower-to-home--move_leader_follower_to_home)
   - [Restore Leader Drag Mode — restore_leader_drag_mode()](#restore-leader-drag-mode--restore_leader_drag_mode)
   - [Get Leader Joint Angles — get_leader_joint_angles()](#get-leader-joint-angles--get_leader_joint_angles)
 - [Motion Control](#motion-control)
   - [Enable — enable()](#enable--enable)
   - [Disable — disable()](#disable--disable)
-  - [Reset — reset()](#reset--reset)
   - [Electronic Emergency Stop — electronic_emergency_stop()](#electronic-emergency-stop--electronic_emergency_stop)
+  - [Reset — reset()](#reset--reset)
   - [Joint Motion — move_j()](#joint-motion--move_j)
   - [Joint Motion (Follower Mode) — move_js()](#joint-motion-follower-mode--move_js)
   - [Point-to-Point Motion — move_p()](#point-to-point-motion--move_p)
@@ -71,7 +76,50 @@
 ## Import Module
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
+```
+
+---
+
+## Firmware Version
+
+Piper series robotic arms may ship with different firmware versions. Some versions introduce protocol-level changes that affect parameter ranges, encoding precision, and internal scaling. The SDK uses the `firmeware_version` parameter in `create_agx_arm_config()` to select the matching driver, ensuring API behavior is consistent with the firmware running on the arm. The firmware version number used here is the software version number, such as `"S-V1.8-8"`.
+
+### Version List
+
+| SDK Version | Constant | Firmware Range | Key Differences |
+| --- | --- | --- | --- |
+| `"default"` | `PiperFW.DEFAULT` | ≤ S-V1.8-2 | MIT torque: joints 1-3 input range ±32 N·m, joints 4-6 range ±8 N·m; 8-bit encoding |
+| `"v183"` | `PiperFW.V183` | S-V1.8-3 ~ S-V1.8-7 | MIT torque: all joints range ±8 N·m; 8-bit encoding |
+| `"v188"` | `PiperFW.V188` | ≥ S-V1.8-8 | MIT torque: all joints range ±16 N·m; 12-bit encoding; CRC checksum removed; motion mode code changed |
+
+### How to Choose
+
+Check the firmware version on the arm's main controller, you can use the [get_firmware()](#get-firmware-info--get_firmware) method (format: **S-VX.X-X**), then pick the corresponding SDK version:
+
+| Your Firmware | `firmeware_version` to Use | Constant |
+| --- | --- | --- |
+| S-V1.8-2 or earlier | `"default"` (or omit the parameter) | `PiperFW.DEFAULT` |
+| S-V1.8-3 ~ S-V1.8-7 | `"v183"` | `PiperFW.V183` |
+| S-V1.8-8 or later | `"v188"` | `PiperFW.V188` |
+
+> **⚠️ Safety Warning:** Using the wrong firmware version may cause the SDK to send incorrectly encoded torque commands. In particular, sending v188 protocol data to an older firmware arm may result in **dangerous unexpected motion**. Always verify your firmware version before choosing the SDK version.
+
+**Usage Example (recommended — use constants for IDE auto-complete):**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
+
+# Firmware is S-V1.8-5 → falls in v183 ~ v187, use PiperFW.V183
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.V183, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+```
+
+Raw strings are also accepted (backward-compatible):
+
+```python
+cfg = create_agx_arm_config(robot="piper", firmeware_version="v183", channel="can0")
 ```
 
 ---
@@ -97,21 +145,24 @@ create_agx_arm_config(
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `robot` | `str` | Robotic arm model. Options: `"nero"` / `"piper"` / `"piper_h"` / `"piper_l"` / `"piper_x"` |
+| `robot` | `str` | Robotic arm model. Use `ArmModel` constants: `ArmModel.PIPER` / `ArmModel.PIPER_H` / `ArmModel.PIPER_L` / `ArmModel.PIPER_X` / `ArmModel.NERO` (raw strings `"piper"` etc. also accepted) |
 | `comm` | `str` | Communication type. Options: `"can"` (default). Note: `comm` is not the CAN channel name; the CAN channel is specified by `channel` |
-| `firmeware_version` | `str` | Main controller firmware version, default `"default"` |
+| `firmeware_version` | `str` | Main controller firmware version. Use per-robot constants: Piper series → `PiperFW.DEFAULT` / `PiperFW.V183` / `PiperFW.V188`. See [Firmware Version](#firmware-version) for details. Default `"default"` |
 
 **Optional Keyword Arguments (`**kwargs`):**
 
 | Name | Type | Description |
 | --- | --- | --- |
 | `joint_limits` | `dict` | Custom joint limits (unit: rad). Automatically assigned by default; manually entered limits are not currently applied to actual control. See example below |
-| `channel` | `str` | CAN channel name, default `"can0"` |
-| `interface` | `str` | CAN interface type, default `"socketcan"`. On Linux, the official CAN module must be `"socketcan"`; on macOS, use a serial CAN module and set to `"slcan"` |
+| `auto_set_motion_mode` | `bool` | Whether the SDK should automatically switch the arm into the required motion mode before motion APIs are sent. Default `True`. Set to `False` if you want to manage motion mode switching explicitly in your own application logic. |
+| `channel` | `str` | CAN channel identifier. Default `"can0"`. The documented and verified combinations are: with `"agx_cando"` use device index strings such as `"0"`, `"1"`, `"2"`; with `"socketcan"` use Linux CAN netdev names such as `"can0"` or your renamed interface; with `"slcan"` use serial device paths such as `"/dev/ttyACM0"` on macOS (`Darwin`). |
+| `interface` | `str` | CAN interface type, default `"socketcan"`. The documented and verified values are `"socketcan"` on Linux, `"agx_cando"` on Windows with the Agilex CANDO backend, and `"slcan"` on macOS (`Darwin`). |
 | `bitrate` | `int` | CAN baud rate, default `1000000` (1 Mbps) |
-| `enable_check_can` | `bool` | Whether to check the CAN module when creating a Comm instance, default `True` |
+| `enable_check_can` | `bool` | Whether to check the CAN module when creating a Comm instance, default `True`. This pre-check is currently only effective for Linux `socketcan`; for other backends (for example, Windows `agx_cando` and macOS `slcan`) the actual availability check happens when the CAN bus is opened. |
 | `auto_connect` | `bool` | Whether to automatically create a CAN Bus instance, default `True` |
-| `timeout` | `float` | CAN Bus read/write timeout (seconds), default `1.0` |
+| `timeout` | `float` | CAN Bus read/write timeout (seconds), default `0.001` |
+| `receive_own_messages` | `bool` | Whether the local CAN backend should receive frames sent by the same process/device. Default `False`. This is useful for debugging, loopback tests, or virtual/single-node verification, but is usually not recommended for normal arm control. Backend support depends on the selected `interface`. The `slcan` backend on macOS generally does not support this; **do not pass** it when using `interface="slcan"`. |
+| `local_loopback` | `bool` | Whether to enable CAN **local loopback**. Default is `False` (loopback disabled), so your local terminal/process will **not** receive the CAN frames it sends itself. You may enable it for debugging, but it is **not recommended** for normal SDK usage because it may consume bus receive resources and impact reading performance. The `slcan` backend on macOS generally does not support this; **do not pass** it when using `interface="slcan"`. |
 
 **Return Value:** `dict`
 
@@ -120,16 +171,10 @@ Example return structure:
 ```json
 {
     "robot": "piper",
-    "comm": {
-        "type": "can",
-        "can": {
-            "channel": "can0",
-            "interface": "socketcan",
-            "bitrate": 1000000,
-            "enable_check_can": true,
-            "auto_connect": true,
-            "timeout": 1.0
-        }
+    "firmeware_version": "default",
+    "log": {
+        "level": "INFO",
+        "path": ""
     },
     "joint_names": ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"],
     "joint_limits": {
@@ -139,18 +184,40 @@ Example return structure:
         "joint4": [-1.745330, 1.745330],
         "joint5": [-1.221730, 1.221730],
         "joint6": [-2.094396, 2.094396]
+    },
+    "comm": {
+        "type": "can",
+        "can": {
+            "channel": "can0",
+            "interface": "socketcan",
+            "bitrate": 1000000,
+            "enable_check_can": true,
+            "auto_connect": true,
+            "timeout": 0.001,
+            "receive_own_messages": false,
+            "local_loopback": false
+        }
     }
 }
 ```
 
-> **Tip:** Joint motion limits are in **radians (rad)**; gripper motion limits are in **meters (m)**.
+> **Note:** `auto_set_motion_mode` is added to the top-level config only when you pass it explicitly.
+
+Verified interface/channel examples:
+
+- Linux `socketcan`: `create_agx_arm_config(..., interface="socketcan", channel="can0")`
+- Windows `agx_cando`: `create_agx_arm_config(..., interface="agx_cando", channel="0")`
+- macOS `slcan`: `create_agx_arm_config(..., interface="slcan", channel="/dev/ttyACM0")`
+
+On Windows, `interface="agx_cando"` requires the separately installed `python-can-agx-cando` plugin. Install it from `https://github.com/kehuanjack/python-can-agx-cando.git`, then run `pip3 install .` in that repository before using `pyAgxArm`.
+On macOS (`Darwin`), when using `interface="slcan"` with the default channel, grant serial permission first.
 
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config
+from pyAgxArm import create_agx_arm_config, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 print(cfg)
 ```
 
@@ -177,9 +244,9 @@ create_arm(cls, config: dict, **kwargs) -> T
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 ```
 
@@ -204,11 +271,47 @@ connect(self, start_read_thread: bool = True) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
+```
+
+---
+
+### Disconnect — `disconnect()`
+
+**Description:** Disconnect from the arm and release underlying threads and CAN resources.
+
+This method is **idempotent** and can be safely called when the arm instance is no longer needed, e.g. after reading firmware version and before creating a new instance.
+
+> **Note:** After `disconnect()`, the internal communication handle may be released. Calling `robot.is_connected()` will return `False`.
+
+**Function Definition:**
+
+```python
+disconnect(self, join_timeout: float = 1.0) -> None
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `join_timeout` | `float` | Timeout (seconds) for joining background threads during shutdown, default `1.0` |
+
+**Usage Example:**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
+
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+print(robot.is_connected())
+
+robot.disconnect()
+print(robot.is_connected())
 ```
 
 ---
@@ -236,9 +339,9 @@ init_effector(self, effector: str) -> EffectorDriver
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -265,9 +368,9 @@ joint_nums: int
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -303,9 +406,9 @@ is_ok(self) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -331,9 +434,9 @@ get_fps(self) -> float
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -373,21 +476,84 @@ get_arm_status(self) -> MessageAbstract[ArmMsgFeedbackStatus] | None
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `ctrl_mode` | `int` | Control mode (standby / CAN / teach / Ethernet / WiFi / offline trajectory, etc.) |
-| `arm_status` | `int` | Robotic arm status (normal / emergency stop / singularity / out of range / collision, etc.) |
-| `mode_feedback` | `int` | Mode feedback (MOVE P/J/L/C/MIT, etc.) |
-| `teach_status` | `int` | Teach status (start recording / stop recording / execute / pause / resume / terminate, etc.) |
-| `motion_status` | `int` | Motion status: `0` reached; `1` not reached |
+| `ctrl_mode` | `int` | Control mode enum (see meanings below) |
+| `arm_status` | `int` | Robotic arm status enum (see meanings below) |
+| `mode_feedback` | `int` | Mode feedback enum (see meanings below) |
+| `teach_status` | `int` | Teaching state enum (see meanings below) |
+| `motion_status` | `int` | Motion status enum (see meanings below) |
 | `trajectory_num` | `int` | Trajectory point number (feedback in offline trajectory mode) |
-| `err_status` | `object` | Error status bits (joint angle out of range / joint communication error, etc.) |
+| `err_status` | `object` | Error status bitfield converted to boolean flags (see meanings below) |
+
+**Enum meanings for `ArmMsgFeedbackStatus.msg`:**
+
+`ctrl_mode` (control mode):
+- `0x00` STANDBY: Standby mode
+- `0x01` CAN_CTRL: CAN instruction control
+- `0x02` TEACHING_MODE: Teaching mode
+- `0x03` ETHERNET_CONTROL_MODE: Ethernet control mode
+- `0x04` WIFI_CONTROL_MODE: Wi-Fi control mode
+- `0x05` REMOTE_CONTROL_MODE: Remote control mode
+- `0x06` LINKAGE_TEACHING_INPUT_MODE: Linkage teaching input mode
+- `0x07` OFFLINE_TRAJECTORY_MODE: Offline trajectory mode
+- `0xFF` UNKNOWN
+
+`arm_status` (robot arm status):
+- `0x00` NORMAL
+- `0x01` EMERGENCY_STOP
+- `0x02` NO_SOLUTION
+- `0x03` SINGULARITY_POINT
+- `0x04` TARGET_POS_EXCEEDS_LIMIT
+- `0x05` JOINT_COMMUNICATION_ERR
+- `0x06` JOINT_BRAKE_NOT_RELEASED
+- `0x07` COLLISION_OCCURRED
+- `0x08` OVERSPEED_DURING_TEACHING_DRAG
+- `0x09` JOINT_STATUS_ERR
+- `0x0A` OTHER_ERR
+- `0x0B` TEACHING_RECORD
+- `0x0C` TEACHING_EXECUTION
+- `0x0D` TEACHING_PAUSE
+- `0x0E` MAIN_CONTROLLER_NTC_OVER_TEMPERATURE
+- `0x0F` RELEASE_RESISTOR_NTC_OVER_TEMPERATURE
+- `0xFF` UNKNOWN
+
+`mode_feedback` (current motion mode feedback):
+- `0x00` MOVE_P
+- `0x01` MOVE_J
+- `0x02` MOVE_L
+- `0x03` MOVE_C
+- `0x04` MOVE_MIT (Piper firmware < v188; use `PiperFW.DEFAULT` / `PiperFW.V183`)
+- `0x05` MOVE_CPV
+- `0x06` MOVE_MIT (Piper firmware >= v188; use `PiperFW.V188`)
+- `0xFF` UNKNOWN
+
+`teach_status` (teaching state):
+- `0x00` DISABLED
+- `0x01` START_RECORDING
+- `0x02` STOP_RECORDING
+- `0x03` EXECUTE_TRAJECTORY
+- `0x04` PAUSE_EXECUTION
+- `0x05` RESUME_EXECUTION
+- `0x06` TERMINATE_EXECUTION
+- `0x07` MOVE_TO_START
+- `0xFF` UNKNOWN
+
+`motion_status`:
+- `0x00` REACH_TARGET_POS_SUCCESSFULLY
+- `0x01` REACH_TARGET_POS_FAILED
+- `0xFF` UNKNOWN
+
+`err_status` (16-bit error code -> boolean flags):
+- `msg.err_code`: original 16-bit error code integer (0~65535).
+- `msg.err_status.joint_i_angle_limit` (`i=1..6`): `True` means joint i angle limit exceeded.
+- `msg.err_status.communication_status_joint_i` (`i=1..6`): `True` means communication exception on joint i.
 
 **Usage Example:**
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -419,9 +585,9 @@ get_joint_angles(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -458,9 +624,9 @@ get_flange_pose(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -504,9 +670,9 @@ get_motor_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6]) -> MessageAbstrac
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -549,9 +715,9 @@ get_driver_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6]) -> MessageAbstra
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -585,9 +751,9 @@ get_joint_enable_status(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 255]) -> bo
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -612,9 +778,9 @@ get_joints_enable_status_list(self) -> list[bool]
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -655,9 +821,9 @@ Common fields:
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -689,9 +855,9 @@ set_speed_percent(self, percent: int = 100) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -719,9 +885,9 @@ set_installation_pos(self, pos: Literal["horizontal", "left", "right"] = "horizo
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -756,9 +922,9 @@ set_motion_mode(self, motion_mode: Literal["p", "j", "l", "c", "mit", "js"] = "p
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -789,9 +955,9 @@ set_payload(self, load: Literal['empty', 'half', 'full'] = 'empty', timeout: flo
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -823,9 +989,9 @@ set_tcp_offset(self, pose: list[float]) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -852,9 +1018,9 @@ get_tcp_pose(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -891,9 +1057,9 @@ get_flange2tcp_pose(self, flange_pose: list[float]) -> list[float]
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -933,9 +1099,9 @@ get_tcp2flange_pose(self, tcp_pose: list[float]) -> list[float]
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -967,9 +1133,9 @@ set_leader_mode(self) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -991,9 +1157,9 @@ set_follower_mode(self) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1015,22 +1181,48 @@ move_leader_to_home(self) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
-robot.set_leader_mode()
+# robot.set_leader_mode()
 robot.move_leader_to_home()
-robot.restore_leader_drag_mode()
+# robot.restore_leader_drag_mode()
+```
+
+---
+
+### Move Leader & Follower to Home — `move_leader_follower_to_home()`
+
+**Description:** Move the leader and follower arms back to the Home pose together. After completion, it is recommended to call `restore_leader_drag_mode()` to restore the leader arm to the "zero-force drag" state.
+
+**Function Definition:**
+
+```python
+move_leader_follower_to_home(self) -> None
+```
+
+**Usage Example:**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
+
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+# robot.set_leader_mode()
+robot.move_leader_follower_to_home()
+# robot.restore_leader_drag_mode()
 ```
 
 ---
 
 ### Restore Leader Drag Mode — `restore_leader_drag_mode()`
 
-**Description:** Restore the leader arm to the "zero-force drag" state, typically used after `move_leader_to_home()`.
+**Description:** Restore the leader arm to the "zero-force drag" state, typically used after `move_leader_to_home()` or `move_leader_follower_to_home()`.
 
 **Function Definition:**
 
@@ -1041,14 +1233,14 @@ restore_leader_drag_mode(self) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
-robot.set_leader_mode()
-robot.move_leader_to_home()
+# robot.set_leader_mode()
+# robot.move_leader_to_home()
 robot.restore_leader_drag_mode()
 ```
 
@@ -1072,9 +1264,9 @@ get_leader_joint_angles(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1114,9 +1306,9 @@ enable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 255] = 255) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1150,14 +1342,38 @@ disable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 255] = 255) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 while not robot.disable():
     time.sleep(0.01)
+```
+
+---
+
+### Electronic Emergency Stop — `electronic_emergency_stop()`
+
+**Description:** Set the robotic arm to emergency stop state. If the joints are in a raised position when executing, the arm will **slowly descend with constant damping** (will not fall immediately). After emergency stop, you can use `reset()` to reset the arm.
+
+**Function Definition:**
+
+```python
+electronic_emergency_stop(self) -> None
+```
+
+**Usage Example:**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
+
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+robot.electronic_emergency_stop()
 ```
 
 ---
@@ -1177,37 +1393,13 @@ reset(self) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 robot.reset()
-```
-
----
-
-### Electronic Emergency Stop — `electronic_emergency_stop()`
-
-**Description:** Set the robotic arm to emergency stop state. If the joints are in a raised position when executing, the arm will **slowly descend with constant damping** (will not fall immediately).
-
-**Function Definition:**
-
-```python
-electronic_emergency_stop(self) -> None
-```
-
-**Usage Example:**
-
-```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
-
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
-robot = AgxArmFactory.create_arm(cfg)
-robot.connect()
-
-robot.electronic_emergency_stop()
 ```
 
 ---
@@ -1234,9 +1426,9 @@ move_j(self, joints: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1290,9 +1482,9 @@ move_js(self, joints: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1326,9 +1518,9 @@ move_p(self, pose: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1376,9 +1568,9 @@ move_l(self, pose: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1426,9 +1618,9 @@ move_c(self, start_pose: list[float], mid_pose: list[float], end_pose: list[floa
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1491,7 +1683,7 @@ move_mit(
 ) -> None
 ```
 
-**Parameters:**
+**Parameters (common to all versions):**
 
 | Name | Type | Range | Unit | Default | Precision |
 | --- | --- | --- | --- | --- | --- |
@@ -1500,17 +1692,28 @@ move_mit(
 | `v_des` | `float` | `[-45.0, 45.0]` | rad/s | `0.0` | 2.198e-2 |
 | `kp` | `float` | `[0.0, 500.0]` | — | `10.0` | 1.221e-1 |
 | `kd` | `float` | `[-5.0, 5.0]` | — | `0.8` | 2.442e-3 |
-| `t_ff` | `float` | `[-8.0, 8.0]` | N·m | `0.0` | 6.275e-2 |
+
+**`t_ff` parameter differs by firmware version:**
+
+| Version | Joint | `t_ff` Range (N·m) | Encoding Bits | Precision (N·m) |
+| --- | --- | --- | --- | --- |
+| `default` (≤ v182) | 1-3 | `[-32.0, 32.0]` | 8 | 2.510e-1 |
+| `default` (≤ v182) | 4-6 | `[-8.0, 8.0]` | 8 | 6.275e-2 |
+| `v183` (v183 ~ v187) | 1-6 | `[-8.0, 8.0]` | 8 | 6.275e-2 |
+| `v188` (≥ v188) | 1-6 | `[-16.0, 16.0]` | 12 | 7.813e-3 |
 
 > **Note:** Consecutive execution of this command will overwrite the previous target value.
+>
+> The correct firmware version must be set via `create_agx_arm_config(firmeware_version=...)`. See [Firmware Version](#firmware-version) for details.
 
 **Usage Example:**
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+# For firmware >= S-V1.8-8, use "v188"
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.V188, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1569,9 +1772,9 @@ get_joint_angle_vel_limits(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1617,9 +1820,9 @@ get_joint_acc_limits(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1662,9 +1865,9 @@ get_flange_vel_acc_limits(self, timeout: float = 1.0, min_interval: float = 1.0)
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1708,9 +1911,9 @@ get_crash_protection_rating(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1749,9 +1952,9 @@ calibrate_joint(
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1798,9 +2001,9 @@ set_joint_angle_vel_limits(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1848,9 +2051,9 @@ set_joint_acc_limits(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1892,9 +2095,9 @@ set_flange_vel_acc_limits(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1937,9 +2140,9 @@ set_crash_protection_rating(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1972,9 +2175,9 @@ set_flange_vel_acc_limits_to_default(self, timeout: float = 1.0) -> bool
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2007,9 +2210,9 @@ set_joint_angle_vel_acc_limits_to_default(self, timeout: float = 1.0) -> bool
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2049,9 +2252,9 @@ set_links_vel_acc_period_feedback(self, enable: bool = False, timeout: float = 1
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2072,10 +2275,14 @@ print("disable periodic feedback success =", success)
 
 - [切换到 English](#piper-api-documentation)
 - [导入模块](#导入模块)
+- [固件版本选择](#固件版本选择)
+  - [版本列表](#版本列表)
+  - [如何选择](#如何选择)
 - [创建实例并连接](#创建实例并连接)
   - [创建配置参数 — create_agx_arm_config()](#创建配置参数--create_agx_arm_config)
-  - [创建机械臂 Driver 实例 — AgxArmFactory.create_arm()](#创建机械臂-driver-实例--agxarmfaborycreate_arm)
+  - [创建机械臂 Driver 实例 — AgxArmFactory.create_arm()](#创建机械臂-driver-实例--agxarmfactorycreate_arm)
   - [创建连接 — connect()](#创建连接--connect)
+  - [断开连接 — disconnect()](#断开连接--disconnect)
   - [初始化末端执行器 — init_effector()](#初始化末端执行器--init_effector)
 - [通用状态](#通用状态)
   - [获取关节数量 — joint_nums](#获取关节数量--joint_nums)
@@ -2105,13 +2312,14 @@ print("disable periodic feedback success =", success)
   - [设定主导臂（Leader）模式 — set_leader_mode()](#设定主导臂leader模式--set_leader_mode)
   - [设定跟随臂（Follower）模式 — set_follower_mode()](#设定跟随臂follower模式--set_follower_mode)
   - [主导臂（Leader）回 Home — move_leader_to_home()](#主导臂leader回-home--move_leader_to_home)
+  - [主从臂（Leader-Follower）一起回 Home — move_leader_follower_to_home()](#主从臂leader-follower一起回-home--move_leader_follower_to_home)
   - [恢复主导臂（Leader）零力拖动 — restore_leader_drag_mode()](#恢复主导臂leader零力拖动--restore_leader_drag_mode)
   - [读取主导臂（Leader）关节角度 — get_leader_joint_angles()](#读取主导臂leader关节角度--get_leader_joint_angles)
 - [运动控制](#运动控制)
   - [使能 — enable()](#使能--enable)
   - [失能 — disable()](#失能--disable)
-  - [重置 — reset()](#重置--reset)
   - [电子急停 — electronic_emergency_stop()](#电子急停--electronic_emergency_stop)
+  - [重置 — reset()](#重置--reset)
   - [关节运动 — move_j()](#关节运动--move_j)
   - [关节运动 (Follower 模式) — move_js()](#关节运动-follower-模式--move_js)
   - [点到点运动 — move_p()](#点到点运动--move_p)
@@ -2137,7 +2345,50 @@ print("disable periodic feedback success =", success)
 ## 导入模块
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
+```
+
+---
+
+## 固件版本选择
+
+Piper 系列机械臂可能搭载不同固件版本，部分版本引入了协议级别的改动，会影响参数范围、编码精度和内部缩放逻辑。SDK 通过 `create_agx_arm_config()` 的 `firmeware_version` 参数选择匹配的驱动，确保 API 行为与机械臂实际运行的固件一致，这里的固件版本采用的是软件的版本号，例如 `"S-V1.8-8"`。
+
+### 版本列表
+
+| SDK 版本 | 常量 | 固件范围 | 主要差异 |
+| --- | --- | --- | --- |
+| `"default"` | `PiperFW.DEFAULT` | ≤ S-V1.8-2 | MIT 力矩：关节 1-3 输入范围 ±32 N·m，关节 4-6 范围 ±8 N·m；8-bit 编码 |
+| `"v183"` | `PiperFW.V183` | S-V1.8-3 ~ S-V1.8-7 | MIT 力矩：全关节范围 ±8 N·m；8-bit 编码 |
+| `"v188"` | `PiperFW.V188` | ≥ S-V1.8-8 | MIT 力矩：全关节范围 ±16 N·m；12-bit 编码；去除 CRC 校验位；motion mode 编码变更 |
+
+### 如何选择
+
+查看机械臂主控上的固件版本号，可通过[get_firmware()](#读取固件信息--get_firmware)方法获取（格式：**S-VX.X-X**），根据下表选择对应的 SDK 版本：
+
+| 您的固件版本 | 应填写的 `firmeware_version` | 常量 |
+| --- | --- | --- |
+| S-V1.8-2 及更早 | `"default"`（或不填，默认值） | `PiperFW.DEFAULT` |
+| S-V1.8-3 ~ S-V1.8-7 | `"v183"` | `PiperFW.V183` |
+| S-V1.8-8 及更新 | `"v188"` | `PiperFW.V188` |
+
+> **⚠️ 安全警告：** 选错固件版本可能导致 SDK 发送编码错误的力矩指令。特别是将 v188 协议数据发送给旧固件机械臂，可能造成 **危险的非预期运动**。使用前请务必确认您的固件版本。
+
+**使用示例（推荐 — 使用常量类获得 IDE 自动补全）：**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
+
+# 固件为 S-V1.8-5 → 处于 v183 ~ v187 之间，选择 PiperFW.V183
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.V183, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+```
+
+也兼容原始字符串写法：
+
+```python
+cfg = create_agx_arm_config(robot="piper", firmeware_version="v183", channel="can0")
 ```
 
 ---
@@ -2163,21 +2414,24 @@ create_agx_arm_config(
 
 | 名称 | 类型 | 说明 |
 | --- | --- | --- |
-| `robot` | `str` | 机械臂型号，可选值：`"nero"` / `"piper"` / `"piper_h"` / `"piper_l"` / `"piper_x"` |
+| `robot` | `str` | 机械臂型号。推荐使用 `ArmModel` 常量：`ArmModel.PIPER` / `ArmModel.PIPER_H` / `ArmModel.PIPER_L` / `ArmModel.PIPER_X` / `ArmModel.NERO`（也兼容原始字符串 `"piper"` 等） |
 | `comm` | `str` | 通讯类型，可选值：`"can"`（默认）。注意：`comm` 不是 CAN 通道名，CAN 通道由 `channel` 指定 |
-| `firmeware_version` | `str` | 主控固件版本，默认 `"default"` |
+| `firmeware_version` | `str` | 主控固件版本。推荐使用按机型分类的常量：Piper 系列 → `PiperFW.DEFAULT` / `PiperFW.V183` / `PiperFW.V188`。选择方法见[固件版本选择](#固件版本选择)。默认 `"default"` |
 
 **可选关键字参数（`**kwargs`）：**
 
 | 名称 | 类型 | 说明 |
 | --- | --- | --- |
 | `joint_limits` | `dict` | 自定义关节限位（单位：rad）。默认自动赋值，暂不会将手动输入的限位生效到实际控制中。示例见下文 |
-| `channel` | `str` | CAN 通道名，默认 `"can0"` |
-| `interface` | `str` | CAN 接口类型，默认 `"socketcan"`。Linux 下官方 CAN 模块必须为 `"socketcan"`；macOS 需换用串口 CAN 模块并设为 `"slcan"` |
+| `auto_set_motion_mode` | `bool` | 是否在发送运动类 API 前由 SDK 自动切换到所需运动模式。默认 `True`。如果你希望在自己的上层逻辑中显式控制模式切换，可设为 `False`。 |
+| `channel` | `str` | CAN 通道标识，默认 `"can0"`。当前文档已验证的写法为：`"agx_cando"` 使用 `"0"`、`"1"`、`"2"` 这类设备索引字符串；`"socketcan"` 使用 Linux 下的 CAN 网卡名，例如 `"can0"` 或重命名后的接口名；`"slcan"` 在 macOS（`Darwin`）下使用串口设备路径，例如 `"/dev/ttyACM0"`。 |
+| `interface` | `str` | CAN 接口类型，默认 `"socketcan"`。当前文档已验证并提供说明的取值为 Linux 下的 `"socketcan"`、Windows 下 Agilex CANDO 后端使用的 `"agx_cando"`、以及 macOS（`Darwin`）下的 `"slcan"`。 |
 | `bitrate` | `int` | CAN 波特率，默认 `1000000`（1 Mbps） |
-| `enable_check_can` | `bool` | 是否在创建 Comm 实例时检查 CAN 模块，默认 `True` |
+| `enable_check_can` | `bool` | 是否在创建 Comm 实例时检查 CAN 模块，默认 `True`。当前该预检查主要只对 Linux `socketcan` 生效；其他后端（如 Windows `agx_cando`、macOS `slcan`）通常会在实际打开 CAN bus 时完成可用性检查。 |
 | `auto_connect` | `bool` | 是否自动创建 CAN Bus 实例，默认 `True` |
-| `timeout` | `float` | CAN Bus 读写超时时间（秒），默认 `1.0` |
+| `timeout` | `float` | CAN Bus 读写超时时间（秒），默认 `0.001` |
+| `receive_own_messages` | `bool` | 是否让本地 CAN 后端接收由同一进程/设备发送出去的报文。默认 `False`。适合调试、回环测试或单节点联调，正常机械臂控制一般不建议开启。具体是否生效取决于所选 `interface`。macOS 下的 `slcan` 后端通常**不支持**该项；使用 `interface="slcan"` 时**不要**传入。 |
+| `local_loopback` | `bool` | 是否开启 CAN **本地回环**。默认 `False`（关闭回环），本地终端/进程将**无法**接收到自己发送的 CAN 报文。调试时可选择开启，但**不建议**在正常使用 SDK 时开启，因为可能会占用读取 bus 的资源并影响读取性能。macOS 下的 `slcan` 后端通常**不支持**该项；使用 `interface="slcan"` 时**不要**传入。 |
 
 **返回值：** `dict`
 
@@ -2186,16 +2440,10 @@ create_agx_arm_config(
 ```json
 {
     "robot": "piper",
-    "comm": {
-        "type": "can",
-        "can": {
-            "channel": "can0",
-            "interface": "socketcan",
-            "bitrate": 1000000,
-            "enable_check_can": true,
-            "auto_connect": true,
-            "timeout": 1.0
-        }
+    "firmeware_version": "default",
+    "log": {
+        "level": "INFO",
+        "path": ""
     },
     "joint_names": ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"],
     "joint_limits": {
@@ -2205,18 +2453,40 @@ create_agx_arm_config(
         "joint4": [-1.745330, 1.745330],
         "joint5": [-1.221730, 1.221730],
         "joint6": [-2.094396, 2.094396]
+    },
+    "comm": {
+        "type": "can",
+        "can": {
+            "channel": "can0",
+            "interface": "socketcan",
+            "bitrate": 1000000,
+            "enable_check_can": true,
+            "auto_connect": true,
+            "timeout": 0.001,
+            "receive_own_messages": false,
+            "local_loopback": false
+        }
     }
 }
 ```
 
-> **提示：** 关节运动限位单位为 **弧度（rad）**，夹爪运动限位单位为 **米（m）**。
+> **说明：** `auto_set_motion_mode` 只有在显式传入时，才会出现在返回配置的顶层字段中。
+
+已验证的接口与通道填写示例：
+
+- Linux `socketcan`：`create_agx_arm_config(..., interface="socketcan", channel="can0")`
+- Windows `agx_cando`：`create_agx_arm_config(..., interface="agx_cando", channel="0")`
+- macOS `slcan`：`create_agx_arm_config(..., interface="slcan", channel="/dev/ttyACM0")`
+
+在 Windows 上使用 `interface="agx_cando"` 前，需要先单独安装 `python-can-agx-cando` 插件。可先从 `https://github.com/kehuanjack/python-can-agx-cando.git` 克隆仓库，再进入仓库目录执行 `pip3 install .` 完成安装。
+在 macOS（`Darwin`）下使用 `interface="slcan"` 且默认通道时，需要先给予串口权限。
 
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config
+from pyAgxArm import create_agx_arm_config, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 print(cfg)
 ```
 
@@ -2243,9 +2513,9 @@ create_arm(cls, config: dict, **kwargs) -> T
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 ```
 
@@ -2270,11 +2540,47 @@ connect(self, start_read_thread: bool = True) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
+```
+
+---
+
+### 断开连接 — `disconnect()`
+
+**功能说明：** 断开机械臂连接，并释放后台线程与 CAN 资源。
+
+该方法是 **幂等（idempotent）** 的：重复调用不会报错。通常用于“当前 `robot` 实例不再需要”的场景，例如读完固件版本后准备创建新的实例。
+
+> **注意：** 调用 `disconnect()` 后，底层通信句柄可能会被释放；此时调用 `robot.is_connected()` 会返回 `False`。
+
+**函数定义：**
+
+```python
+disconnect(self, join_timeout: float = 1.0) -> None
+```
+
+**参数说明：**
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `join_timeout` | `float` | 关闭时等待后台线程退出的超时时间（秒），默认 `1.0` |
+
+**使用示例：**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
+
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+print(robot.is_connected())
+
+robot.disconnect()
+print(robot.is_connected())
 ```
 
 ---
@@ -2302,9 +2608,9 @@ init_effector(self, effector: str) -> EffectorDriver
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2331,9 +2637,9 @@ joint_nums: int
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2369,9 +2675,9 @@ is_ok(self) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2397,9 +2703,9 @@ get_fps(self) -> float
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2439,21 +2745,84 @@ get_arm_status(self) -> MessageAbstract[ArmMsgFeedbackStatus] | None
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `ctrl_mode` | `int` | 控制模式（待机 / CAN / 示教 / 以太网 / WiFi / 离线轨迹等） |
-| `arm_status` | `int` | 机械臂状态（正常 / 急停 / 奇异 / 超限 / 碰撞等） |
-| `mode_feedback` | `int` | 模式反馈（MOVE P/J/L/C/MIT 等） |
-| `teach_status` | `int` | 示教状态（开始记录 / 结束记录 / 执行 / 暂停 / 继续 / 终止等） |
-| `motion_status` | `int` | 运动状态：`0` 已到达；`1` 未到达 |
+| `ctrl_mode` | `int` | 控制模式枚举（见下方含义） |
+| `arm_status` | `int` | 机械臂状态枚举（见下方含义） |
+| `mode_feedback` | `int` | 模式反馈枚举（见下方含义） |
+| `teach_status` | `int` | 示教状态枚举（见下方含义） |
+| `motion_status` | `int` | 运动状态枚举（见下方含义） |
 | `trajectory_num` | `int` | 轨迹点编号（离线轨迹模式下反馈） |
-| `err_status` | `object` | 错误状态位（关节角度超限 / 关节通信异常等） |
+| `err_status` | `object` | 故障状态位域（已转换为布尔标志，见下方含义） |
+
+**枚举含义（`ArmMsgFeedbackStatus.msg`）：**
+
+`ctrl_mode`（控制模式）：
+- `0x00` 待机模式
+- `0x01` CAN 指令控制
+- `0x02` 示教模式
+- `0x03` 以太网控制模式
+- `0x04` Wi-Fi 控制模式
+- `0x05` 遥控器控制模式
+- `0x06` 联动示教输入模式
+- `0x07` 离线轨迹模式
+- `0xFF` 未知
+
+`arm_status`（机械臂状态）：
+- `0x00` 正常
+- `0x01` 急停
+- `0x02` 无解
+- `0x03` 奇异点
+- `0x04` 目标角度超过限
+- `0x05` 关节通信异常
+- `0x06` 关节抱闸未打开
+- `0x07` 发生碰撞
+- `0x08` 拖动示教时超速
+- `0x09` 关节状态异常
+- `0x0A` 其它异常
+- `0x0B` 示教记录
+- `0x0C` 示教执行
+- `0x0D` 示教暂停
+- `0x0E` 主控 NTC 过温
+- `0x0F` 释放电阻 NTC 过温
+- `0xFF` 未知
+
+`mode_feedback`（模式反馈）：
+- `0x00` MOVE P
+- `0x01` MOVE J
+- `0x02` MOVE L
+- `0x03` MOVE C
+- `0x04` MOVE MIT（Piper固件 < v188；使用 `PiperFW.DEFAULT` / `PiperFW.V183`）
+- `0x05` MOVE_CPV
+- `0x06` MOVE MIT（Piper固件 >= v188；使用 `PiperFW.V188`）
+- `0xFF` 未知
+
+`teach_status`（示教状态）：
+- `0x00` 关闭
+- `0x01` 开始示教记录（进入拖动示教模式）
+- `0x02` 结束示教记录（退出拖动示教模式）
+- `0x03` 执行示教轨迹（拖动示教轨迹复现）
+- `0x04` 暂停执行
+- `0x05` 继续执行（轨迹复现继续）
+- `0x06` 终止执行
+- `0x07` 运动到轨迹起点
+- `0xFF` 未知
+
+`motion_status`（运动状态）：
+- `0x00` 到达指定点位
+- `0x01` 未到达指定点位
+- `0xFF` 未知
+
+`err_status`（16-bit 故障码 -> 布尔标志，Piper 6 轴）：
+- `msg.err_code`: 原始 16-bit 故障码整数（0~65535）。
+- `msg.err_status.joint_i_angle_limit`（`i=1..6`）：`True` 表示关节 i 角度超限。
+- `msg.err_status.communication_status_joint_i`（`i=1..6`）：`True` 表示关节 i 通信异常。
 
 **使用示例：**
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2485,9 +2854,9 @@ get_joint_angles(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2524,9 +2893,9 @@ get_flange_pose(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2570,9 +2939,9 @@ get_motor_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6]) -> MessageAbstrac
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2615,9 +2984,9 @@ get_driver_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6]) -> MessageAbstra
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2651,9 +3020,9 @@ get_joint_enable_status(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 255]) -> bo
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2678,9 +3047,9 @@ get_joints_enable_status_list(self) -> list[bool]
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2721,9 +3090,9 @@ get_firmware(self, timeout: float = 1.0, min_interval: float = 1.0) -> dict | No
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2755,9 +3124,9 @@ set_speed_percent(self, percent: int = 100) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2785,9 +3154,9 @@ set_installation_pos(self, pos: Literal["horizontal", "left", "right"] = "horizo
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2822,9 +3191,9 @@ set_motion_mode(self, motion_mode: Literal["p", "j", "l", "c", "mit", "js"] = "p
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2855,9 +3224,9 @@ set_payload(self, load: Literal['empty', 'half', 'full'] = 'empty', timeout: flo
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2889,9 +3258,9 @@ set_tcp_offset(self, pose: list[float]) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2918,9 +3287,9 @@ get_tcp_pose(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2957,9 +3326,9 @@ get_flange2tcp_pose(self, flange_pose: list[float]) -> list[float]
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2999,9 +3368,9 @@ get_tcp2flange_pose(self, tcp_pose: list[float]) -> list[float]
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3033,9 +3402,9 @@ set_leader_mode(self) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3057,9 +3426,9 @@ set_follower_mode(self) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3081,22 +3450,48 @@ move_leader_to_home(self) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
-robot.set_leader_mode()
+# robot.set_leader_mode()
 robot.move_leader_to_home()
-robot.restore_leader_drag_mode()
+# robot.restore_leader_drag_mode()
+```
+
+---
+
+### 主从臂（Leader-Follower）一起回 Home — `move_leader_follower_to_home()`
+
+**功能说明：** 让主导臂（Leader Arm）与跟随臂（Follower Arm）**一起**回到 Home 位姿。完成后建议调用 `restore_leader_drag_mode()` 恢复主导臂（Leader Arm）"零力拖动"状态。
+
+**函数定义：**
+
+```python
+move_leader_follower_to_home(self) -> None
+```
+
+**使用示例：**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
+
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+# robot.set_leader_mode()
+robot.move_leader_follower_to_home()
+# robot.restore_leader_drag_mode()
 ```
 
 ---
 
 ### 恢复主导臂（Leader）零力拖动 — `restore_leader_drag_mode()`
 
-**功能说明：** 将主导臂（Leader Arm）恢复为"零力拖动"状态，通常用于 `move_leader_to_home()` 之后。
+**功能说明：** 将主导臂（Leader Arm）恢复为"零力拖动"状态，通常用于 `move_leader_to_home()` 或 `move_leader_follower_to_home()` 之后。
 
 **函数定义：**
 
@@ -3107,14 +3502,14 @@ restore_leader_drag_mode(self) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
-robot.set_leader_mode()
-robot.move_leader_to_home()
+# robot.set_leader_mode()
+# robot.move_leader_to_home()
 robot.restore_leader_drag_mode()
 ```
 
@@ -3138,9 +3533,9 @@ get_leader_joint_angles(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3180,9 +3575,9 @@ enable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 255] = 255) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3216,14 +3611,38 @@ disable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 255] = 255) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 while not robot.disable():
     time.sleep(0.01)
+```
+
+---
+
+### 电子急停 — `electronic_emergency_stop()`
+
+**功能说明：** 将机械臂设置为急停状态。如果执行时机械臂关节处于抬起状态，机械臂会 **缓慢以恒定阻尼落下**（不会立刻掉落），急停后可使用 `reset()` 进行重置。
+
+**函数定义：**
+
+```python
+electronic_emergency_stop(self) -> None
+```
+
+**使用示例：**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
+
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+robot.electronic_emergency_stop()
 ```
 
 ---
@@ -3243,37 +3662,13 @@ reset(self) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 robot.reset()
-```
-
----
-
-### 电子急停 — `electronic_emergency_stop()`
-
-**功能说明：** 将机械臂设置为急停状态。如果执行时机械臂关节处于抬起状态，机械臂会 **缓慢以恒定阻尼落下**（不会立刻掉落）。
-
-**函数定义：**
-
-```python
-electronic_emergency_stop(self) -> None
-```
-
-**使用示例：**
-
-```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
-
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
-robot = AgxArmFactory.create_arm(cfg)
-robot.connect()
-
-robot.electronic_emergency_stop()
 ```
 
 ---
@@ -3300,9 +3695,9 @@ move_j(self, joints: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3356,9 +3751,9 @@ move_js(self, joints: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3392,9 +3787,9 @@ move_p(self, pose: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3442,9 +3837,9 @@ move_l(self, pose: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3492,9 +3887,9 @@ move_c(self, start_pose: list[float], mid_pose: list[float], end_pose: list[floa
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3557,7 +3952,7 @@ move_mit(
 ) -> None
 ```
 
-**参数说明：**
+**参数说明（各版本通用）：**
 
 | 名称 | 类型 | 范围 | 单位 | 默认值 | 精度 |
 | --- | --- | --- | --- | --- | --- |
@@ -3566,17 +3961,28 @@ move_mit(
 | `v_des` | `float` | `[-45.0, 45.0]` | rad/s | `0.0` | 2.198e-2 |
 | `kp` | `float` | `[0.0, 500.0]` | — | `10.0` | 1.221e-1 |
 | `kd` | `float` | `[-5.0, 5.0]` | — | `0.8` | 2.442e-3 |
-| `t_ff` | `float` | `[-8.0, 8.0]` | N·m | `0.0` | 6.275e-2 |
+
+**`t_ff` 参数因固件版本而异：**
+
+| 版本 | 关节 | `t_ff` 范围 (N·m) | 编码位数 | 精度 (N·m) |
+| --- | --- | --- | --- | --- |
+| `default`（≤ v182） | 1-3 | `[-32.0, 32.0]` | 8 | 2.510e-1 |
+| `default`（≤ v182） | 4-6 | `[-8.0, 8.0]` | 8 | 6.275e-2 |
+| `v183`（v183 ~ v187） | 1-6 | `[-8.0, 8.0]` | 8 | 6.275e-2 |
+| `v188`（≥ v188） | 1-6 | `[-16.0, 16.0]` | 12 | 7.813e-3 |
 
 > **注意：** 连续执行该指令会覆盖上一次的目标值。
+>
+> 必须通过 `create_agx_arm_config(firmeware_version=...)` 正确设置固件版本。详见[固件版本选择](#固件版本选择)。
 
 **使用示例：**
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+# 固件 >= S-V1.8-8，使用 "v188"
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.V188, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3635,9 +4041,9 @@ get_joint_angle_vel_limits(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3683,9 +4089,9 @@ get_joint_acc_limits(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3728,9 +4134,9 @@ get_flange_vel_acc_limits(self, timeout: float = 1.0, min_interval: float = 1.0)
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3774,9 +4180,9 @@ get_crash_protection_rating(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3815,9 +4221,9 @@ calibrate_joint(
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3864,9 +4270,9 @@ set_joint_angle_vel_limits(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3914,9 +4320,9 @@ set_joint_acc_limits(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -3958,9 +4364,9 @@ set_flange_vel_acc_limits(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -4003,9 +4409,9 @@ set_crash_protection_rating(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -4038,9 +4444,9 @@ set_flange_vel_acc_limits_to_default(self, timeout: float = 1.0) -> bool
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -4073,9 +4479,9 @@ set_joint_angle_vel_acc_limits_to_default(self, timeout: float = 1.0) -> bool
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -4115,9 +4521,9 @@ set_links_vel_acc_period_feedback(self, enable: bool = False, timeout: float = 1
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 

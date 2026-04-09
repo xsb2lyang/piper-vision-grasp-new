@@ -1,12 +1,13 @@
 # CAN Module Manual
 
-> This document describes how to find, activate, and configure the official CAN module bundled with the robotic arm on Ubuntu systems.
+> This document describes platform-specific CAN setup for pyAgxArm.
 
 > **Note:** Only the CAN module that comes with the robotic arm is supported; other CAN modules are not supported.
 
 ## Table of Contents
 
 - [Switch to 中文](#can-模块使用手册)
+- [Platform-specific Guide](#platform-specific-guide)
 - [Prerequisites](#prerequisites)
 - [1. Find CAN Modules](#1-find-can-modules)
 - [2. Activate a Single CAN Module](#2-activate-a-single-can-module)
@@ -14,11 +15,35 @@
 
 ---
 
+## Platform-specific Guide
+
+### Linux (`socketcan`)
+
+- Supports `.sh` helper scripts in `pyAgxArm/scripts/ubuntu`.
+- The detailed Linux script workflow is documented in sections `1`, `2`, and `3` below.
+- You can also manually activate CAN, for example:
+  `sudo ip link set can0 up type can bitrate 1000000`.
+
+### Windows (`agx_cando`)
+
+- `.sh` scripts in this repository are **not** for Windows.
+- Use `interface="agx_cando"` and channel indices such as `"0"`, `"1"`, `"2"`.
+- Before using the SDK, install the `python-can-agx-cando` plugin.
+
+### macOS (`Darwin`, `slcan`)
+
+- `.sh` scripts in this repository are **not** for macOS.
+- Use `interface="slcan"` with channel paths like `"/dev/ttyACM0"`.
+- Before using the default serial device, grant permission first:
+  `sudo chmod 777 /dev/ttyACM0`.
+
+---
+
 ## Prerequisites
 
 **Script Path:** `scripts`
 
-Navigate to the corresponding folder based on your system. For example, on Ubuntu the script path is `pyAgxArm/scripts/ubuntu`.
+The `.sh` scripts in this document are Linux-only. On Ubuntu, the script path is `pyAgxArm/scripts/ubuntu`.
 
 ```shell
 cd pyAgxArm/scripts/ubuntu
@@ -179,13 +204,14 @@ Run `ifconfig` and check if both `can_left` and `can_right` appear.
 
 # CAN 模块使用手册
 
-> 本文档介绍如何在 Ubuntu 系统下查找、激活和配置机械臂自带的 CAN 模块。
+> 本文档介绍 pyAgxArm 在不同平台下的 CAN 配置方法。
 
 > **注意：** 此处的 CAN 模块仅支持机械臂自带的官方 CAN 模块，不支持其它 CAN 模块。
 
 ## 目录
 
 - [切换到 English](#can-module-manual)
+- [按平台说明](#按平台说明)
 - [前置准备](#前置准备)
 - [1. 寻找 CAN 模块](#1-寻找-can-模块)
 - [2. 激活单个 CAN 模块](#2-激活单个-can-模块)
@@ -193,11 +219,35 @@ Run `ifconfig` and check if both `can_left` and `can_right` appear.
 
 ---
 
+## 按平台说明
+
+### Linux（`socketcan`）
+
+- 支持使用仓库中的 `.sh` 脚本（路径：`pyAgxArm/scripts/ubuntu`）。
+- Linux 的脚本化流程详见下方 `1`、`2`、`3` 章节。
+- 也可手动激活 CAN，例如：
+  `sudo ip link set can0 up type can bitrate 1000000`。
+
+### Windows（`agx_cando`）
+
+- 仓库中的 `.sh` 脚本**不适用于 Windows**。
+- 使用 `interface="agx_cando"`，`channel` 通常写 `"0"`、`"1"`、`"2"`。
+- 使用 SDK 前，需要先安装 `python-can-agx-cando` 插件。
+
+### macOS（`Darwin`，`slcan`）
+
+- 仓库中的 `.sh` 脚本**不适用于 macOS**。
+- 使用 `interface="slcan"`，`channel` 通常写 `"/dev/ttyACM0"`。
+- 使用默认串口前，先赋予权限：
+  `sudo chmod 777 /dev/ttyACM0`。
+
+---
+
 ## 前置准备
 
 **脚本路径：** `scripts`
 
-根据系统进入对应的文件夹，例如 Ubuntu 系统下脚本路径为 `pyAgxArm/scripts/ubuntu`。
+本文档中的 `.sh` 脚本仅适用于 Linux。以 Ubuntu 为例，脚本路径为 `pyAgxArm/scripts/ubuntu`。
 
 ```shell
 cd pyAgxArm/scripts/ubuntu

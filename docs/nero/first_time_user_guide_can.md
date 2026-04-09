@@ -42,11 +42,14 @@
 4. Wait for green indicator, then call `set_normal_mode()` in `pyAgxArm`:
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
-robot_cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0", interface="socketcan")
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+robot_cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(robot_cfg)
 robot.connect()
-robot.set_normal_mode()
+
+while not robot.enable():
+    robot.set_normal_mode()
+    time.sleep(0.01)
 ```
 
 This switches the arm to normal mode, enables CAN push, and the arm will auto-enable.
@@ -64,16 +67,19 @@ Example of normal `candump can0` data stream:
 
 ![alt text](../../asserts/pictures/candump_can0.png)
 
-Sample code for reading joint angles after CAN setup:
+Attached is a code snippet showing how to read joint data after enabling CAN mode. Note that `robot.set_normal_mode()` is commented out here; you can enable it as needed.:
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 import time
-robot_cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0", interface="socketcan")
+robot_cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(robot_cfg)
 robot.connect()
-#robot.set_normal_mode()
-time.sleep(1)
+
+while not robot.enable():
+    # robot.set_normal_mode()
+    time.sleep(0.01)
+
 while True:
     print(robot.get_joint_angles())
     time.sleep(0.01)
@@ -145,11 +151,14 @@ while True:
 4. 观察机械臂指示灯，待机械臂指示灯绿色后，在 PC 上编写代码，调用 `pyAgxArm` 的 `set_normal_mode()` 函数
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
-robot_cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0", interface="socketcan")
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+robot_cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(robot_cfg)
 robot.connect()
-robot.set_normal_mode()
+
+while not robot.enable():
+    robot.set_normal_mode()
+    time.sleep(0.01)
 ```
 
 该函数作用是将机械臂切换到普通模式并开启 CAN 推送，执行该指令后，机械臂会自动使能。
@@ -170,13 +179,16 @@ robot.set_normal_mode()
 附上一段开启 CAN 模式后，读取关节数据的代码，注意这里将 `robot.set_normal_mode()` 注释掉了，可以按需开启。
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 import time
-robot_cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0", interface="socketcan")
+robot_cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(robot_cfg)
 robot.connect()
-#robot.set_normal_mode()
-time.sleep(1)
+
+while not robot.enable():
+    # robot.set_normal_mode()
+    time.sleep(0.01)
+
 while True:
     print(robot.get_joint_angles())
     time.sleep(0.01)

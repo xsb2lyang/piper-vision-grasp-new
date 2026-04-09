@@ -18,7 +18,9 @@
   - [Get Gripper Control States — get_gripper_ctrl_states()](#get-gripper-control-states--get_gripper_ctrl_states)
   - [Get Gripper Teaching Pendant Parameters — get_gripper_teaching_pendant_param()](#get-gripper-teaching-pendant-parameters--get_gripper_teaching_pendant_param)
 - [Effector Control](#effector-control)
-  - [Move Gripper — move_gripper()](#move-gripper--move_gripper)
+  - [Move Gripper by Width — move_gripper_m()](#move-gripper-by-width--move_gripper_m)
+  - [Move Gripper by Angle — move_gripper_deg()](#move-gripper-by-angle--move_gripper_deg)
+  - [Move Gripper (deprecated) — move_gripper()](#move-gripper-deprecated--move_gripper)
   - [Disable Gripper — disable_gripper()](#disable-gripper--disable_gripper)
   - [Calibrate Gripper — calibrate_gripper()](#calibrate-gripper--calibrate_gripper)
   - [Set Gripper Teaching Pendant Parameters — set_gripper_teaching_pendant_param()](#set-gripper-teaching-pendant-parameters--set_gripper_teaching_pendant_param)
@@ -48,9 +50,9 @@ create_arm(cls, config: dict, **kwargs) -> T
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 ```
 
@@ -92,9 +94,9 @@ class EFFECTOR:
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 ```
@@ -125,9 +127,9 @@ connect(self, start_read_thread: bool = True) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -157,9 +159,9 @@ is_ok(self) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -186,9 +188,9 @@ get_fps(self) -> float
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -215,7 +217,7 @@ Most read interfaces in this SDK return `MessageAbstract[T] | None`, with the fo
 
 ### Get Gripper Status — `get_gripper_status()`
 
-**Description:** Reads the real-time status feedback of the AgxGripper (current gripper opening width, gripping force, driver status, etc.).
+**Description:** Reads the real-time status feedback of the AgxGripper (current gripper value in width/angle mode, gripping force, driver status, etc.).
 
 **Function Definition:**
 
@@ -234,8 +236,9 @@ get_gripper_status(self) -> Optional[MessageAbstract[ArmMsgFeedbackGripper]]
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `width` | `float` | Current gripper opening width, unit: m, range: [0.0, 0.1] |
+| `value` | `float` | Current gripper value. `mode=width` -> width (m); `mode=angle` -> angle (deg) |
 | `force` | `float` | Current gripping force, unit: N, range: [0.0, 3.0] |
+| `mode` | `str` | Gripper mode: `width` / `angle` |
 | `foc_status` | `object` | Driver status collection (see table below) |
 
 `foc_status` sub-fields (`gs.msg.foc_status.xxx`):
@@ -255,9 +258,9 @@ get_gripper_status(self) -> Optional[MessageAbstract[ArmMsgFeedbackGripper]]
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -265,7 +268,7 @@ robot.connect()
 while True:
     gs = end_effector.get_gripper_status()
     if gs is not None:
-        print("width(m)=", gs.msg.width, "force(N)=", gs.msg.force)
+        print("value=", gs.msg.value, "mode=", gs.msg.mode, "force(N)=", gs.msg.force)
         print("hz=", gs.hz, "timestamp=", gs.timestamp)
         break
     time.sleep(0.05)
@@ -293,7 +296,7 @@ get_gripper_ctrl_states(self) -> Optional[MessageAbstract[ArmMsgGripperCtrl]]
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `width` | `float` | Current gripper opening width, unit: m, range: [0.0, 0.1] |
+| `value` | `float` | Current gripper value. Width mode: m; angle mode: deg |
 | `force` | `float` | Current gripping force, unit: N, range: [0.0, 3.0] |
 | `status_code` | `int` | Status code (related to the control command) |
 | `set_zero` | `int` | Homing/zero calibration field (related to the control command) |
@@ -301,16 +304,16 @@ get_gripper_ctrl_states(self) -> Optional[MessageAbstract[ArmMsgGripperCtrl]]
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
 
 gcs = end_effector.get_gripper_ctrl_states()
 if gcs is not None:
-    print("width(m)=", gcs.msg.width, "force(N)=", gcs.msg.force)
+    print("value=", gcs.msg.value, "force(N)=", gcs.msg.force)
     print("status_code=", gcs.msg.status_code, "set_zero=", gcs.msg.set_zero)
     print("hz=", gcs.hz, "timestamp=", gcs.timestamp)
 ```
@@ -349,9 +352,9 @@ get_gripper_teaching_pendant_param(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -370,51 +373,82 @@ if param is not None:
 
 ## Effector Control
 
-### Move Gripper — `move_gripper()`
+### Move Gripper by Width — `move_gripper_m()`
 
-**Description:** Controls the gripper to move to the target opening width and sets the target gripping force.
+**Description:** Controls the gripper in width mode and sets the target gripping force.
 
 **Function Definition:**
 
 ```python
-move_gripper(self, width: float = 0.0, force: float = 1.0) -> None
+move_gripper_m(self, value: float = 0.0, force: float = 1.0) -> None
 ```
 
 **Parameters:**
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `width` | `float` | Target gripper opening width, unit: m, range: [0.0, 0.1], default: `0.0` (precision approx. \(1e^{-6}\) m) |
-| `force` | `float` | Target gripping force, unit: N, range: [0.0, 3.0], default: `1.0` (precision approx. \(1e^{-3}\) N) |
-
-**Exceptions:**
-
-| Exception | Trigger Condition |
-| --- | --- |
-| `ValueError` | `width` not in [0.0, 0.1] m or `force` not in [0.0, 3.0] N |
+| `value` | `float` | Target gripper width, unit: m (precision approx. \(1e^{-6}\) m) |
+| `force` | `float` | Target gripping force, unit: N (precision approx. \(1e^{-3}\) N) |
 
 **Usage Example:**
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
 
-# 张开到 5cm，力 1N
-end_effector.move_gripper(width=0.05, force=1.0)
+# Open to 5cm, force 1N
+end_effector.move_gripper_m(value=0.05, force=1.0)
 time.sleep(1.0)
 
-# 闭合（宽度 0）
-end_effector.move_gripper(width=0.0, force=1.0)
+# Close (width = 0)
+end_effector.move_gripper_m(value=0.0, force=1.0)
+```
+
+### Move Gripper by Angle — `move_gripper_deg()`
+
+**Description:** Controls the gripper in angle mode and sets the target gripping force.
+
+**Function Definition:**
+
+```python
+move_gripper_deg(self, value: float = 0.0, force: float = 1.0) -> None
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `value` | `float` | Target gripper angle, unit: deg (precision approx. \(1e^{-3}\) deg) |
+| `force` | `float` | Target gripping force, unit: N (precision approx. \(1e^{-3}\) N) |
+
+**Usage Example:**
+
+```python
+end_effector.move_gripper_deg(value=5.0, force=1.0)
 ```
 
 > **Note:**
 > 1. It is recommended to issue control commands only after `robot.connect()`, to ensure communication and the reading thread are working properly
-> 2. The units for `width` / `force` are **meters (m)** / **newtons (N)** respectively; do not input values in millimeters or gram-force, etc.
+> 2. In width mode (`move_gripper_m`), `value` is in **meters (m)**; in angle mode (`move_gripper_deg`), `value` is in **degrees (deg)**; `force` is in **newtons (N)**.
+
+---
+
+### Move Gripper (deprecated) — `move_gripper()`
+
+> **Deprecated:** This method is retained for backward compatibility only and **may be removed in a future release**. Use `move_gripper_m()` for width (stroke) control or `move_gripper_deg()` for angle control. Each call emits a `DeprecationWarning` at runtime.
+
+**Description:** Same behavior as `move_gripper_m(value=width, force=force)` — width mode only (historical API name `width`).
+
+**Function Definition:**
+
+```python
+move_gripper(self, width: float = 0.0, force: float = 1.0) -> None
+```
 
 ---
 
@@ -436,9 +470,9 @@ disable_gripper(self) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -471,9 +505,9 @@ calibrate_gripper(self, timeout: float = 1.0) -> bool
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -481,7 +515,7 @@ robot.connect()
 end_effector.disable_gripper()
 input("Please move the gripper to the zero position...")
 if end_effector.calibrate_gripper():
-    end_effector.move_gripper(width=0.0)
+    end_effector.move_gripper_m(value=0.0)
 ```
 
 ---
@@ -523,9 +557,9 @@ set_gripper_teaching_pendant_param(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -561,7 +595,9 @@ if success:
   - [读取末端执行器控制消息 — get_gripper_ctrl_states()](#读取末端执行器控制消息--get_gripper_ctrl_states)
   - [读取夹爪/示教器参数 — get_gripper_teaching_pendant_param()](#读取夹爪示教器参数--get_gripper_teaching_pendant_param)
 - [执行器控制相关](#执行器控制相关)
-  - [控制执行器 — move_gripper()](#控制执行器--move_gripper)
+  - [按行程控制执行器 — move_gripper_m()](#按行程控制执行器--move_gripper_m)
+  - [按角度控制执行器 — move_gripper_deg()](#按角度控制执行器--move_gripper_deg)
+  - [控制执行器（即将废弃）— move_gripper()](#控制执行器即将废弃--move_gripper)
   - [禁用夹爪 — disable_gripper()](#禁用夹爪--disable_gripper)
   - [夹爪置零/标定 — calibrate_gripper()](#夹爪置零标定--calibrate_gripper)
   - [配置夹爪/示教器参数 — set_gripper_teaching_pendant_param()](#配置夹爪示教器参数--set_gripper_teaching_pendant_param)
@@ -591,9 +627,9 @@ create_arm(cls, config: dict, **kwargs) -> T
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 ```
 
@@ -635,9 +671,9 @@ class EFFECTOR:
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 ```
@@ -668,9 +704,9 @@ connect(self, start_read_thread: bool = True) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -700,9 +736,9 @@ is_ok(self) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -729,9 +765,9 @@ get_fps(self) -> float
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -758,7 +794,7 @@ print("effector fps =", end_effector.get_fps(), "Hz")
 
 ### 读取末端执行器状态 — `get_gripper_status()`
 
-**功能说明：** 读取 AgxGripper 的实时状态反馈（当前夹爪开口宽度、夹持力、驱动状态等）。
+**功能说明：** 读取 AgxGripper 的实时状态反馈（行程/角度模式下的当前夹爪值、夹持力、驱动状态等）。
 
 **函数定义：**
 
@@ -777,8 +813,9 @@ get_gripper_status(self) -> Optional[MessageAbstract[ArmMsgFeedbackGripper]]
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `width` | `float` | 当前夹爪开口宽度，单位：m，范围：[0.0, 0.1] |
+| `value` | `float` | 当前夹爪值。`mode=width` 时单位 m；`mode=angle` 时单位 deg |
 | `force` | `float` | 当前夹持力，单位：N，范围：[0.0, 3.0] |
+| `mode` | `str` | 夹爪模式：`width` / `angle` |
 | `foc_status` | `object` | 驱动状态集合（见下表） |
 
 `foc_status` 子字段（`gs.msg.foc_status.xxx`）：
@@ -798,9 +835,9 @@ get_gripper_status(self) -> Optional[MessageAbstract[ArmMsgFeedbackGripper]]
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -808,7 +845,7 @@ robot.connect()
 while True:
     gs = end_effector.get_gripper_status()
     if gs is not None:
-        print("width(m)=", gs.msg.width, "force(N)=", gs.msg.force)
+        print("value=", gs.msg.value, "mode=", gs.msg.mode, "force(N)=", gs.msg.force)
         print("hz=", gs.hz, "timestamp=", gs.timestamp)
         break
     time.sleep(0.05)
@@ -836,7 +873,7 @@ get_gripper_ctrl_states(self) -> Optional[MessageAbstract[ArmMsgGripperCtrl]]
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `width` | `float` | 当前夹爪开口宽度，单位：m，范围：[0.0, 0.1] |
+| `value` | `float` | 当前夹爪值。行程模式单位 m；角度模式单位 deg |
 | `force` | `float` | 当前夹持力，单位：N，范围：[0.0, 3.0] |
 | `status_code` | `int` | 状态码（与控制指令相关） |
 | `set_zero` | `int` | 回零/置零相关字段（与控制指令相关） |
@@ -844,16 +881,16 @@ get_gripper_ctrl_states(self) -> Optional[MessageAbstract[ArmMsgGripperCtrl]]
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
 
 gcs = end_effector.get_gripper_ctrl_states()
 if gcs is not None:
-    print("width(m)=", gcs.msg.width, "force(N)=", gcs.msg.force)
+    print("value=", gcs.msg.value, "force(N)=", gcs.msg.force)
     print("status_code=", gcs.msg.status_code, "set_zero=", gcs.msg.set_zero)
     print("hz=", gcs.hz, "timestamp=", gcs.timestamp)
 ```
@@ -892,9 +929,9 @@ get_gripper_teaching_pendant_param(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -913,51 +950,82 @@ if param is not None:
 
 ## 执行器控制相关
 
-### 控制执行器 — `move_gripper()`
+### 按行程控制执行器 — `move_gripper_m()`
 
-**功能说明：** 控制夹爪运动到目标开口宽度，并设置目标夹持力。
+**功能说明：** 以行程模式控制夹爪，并设置目标夹持力。
 
 **函数定义：**
 
 ```python
-move_gripper(self, width: float = 0.0, force: float = 1.0) -> None
+move_gripper_m(self, value: float = 0.0, force: float = 1.0) -> None
 ```
 
 **参数说明：**
 
 | 名称 | 类型 | 说明 |
 | --- | --- | --- |
-| `width` | `float` | 目标夹爪开口宽度，单位：m，范围：[0.0, 0.1]，默认：`0.0`（数值精度约 \(1e^{-6}\) m） |
-| `force` | `float` | 目标夹持力，单位：N，范围：[0.0, 3.0]，默认：`1.0`（数值精度约 \(1e^{-3}\) N） |
-
-**异常：**
-
-| 异常 | 触发条件 |
-| --- | --- |
-| `ValueError` | `width` 不在 [0.0, 0.1] m 或 `force` 不在 [0.0, 3.0] N |
+| `value` | `float` | 目标夹爪行程（开口宽度），单位：m（数值精度约 \(1e^{-6}\) m） |
+| `force` | `float` | 目标夹持力，单位：N（数值精度约 \(1e^{-3}\) N） |
 
 **使用示例：**
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
 
 # 张开到 5cm，力 1N
-end_effector.move_gripper(width=0.05, force=1.0)
+end_effector.move_gripper_m(value=0.05, force=1.0)
 time.sleep(1.0)
 
-# 闭合（宽度 0）
-end_effector.move_gripper(width=0.0, force=1.0)
+# 闭合（行程 0）
+end_effector.move_gripper_m(value=0.0, force=1.0)
+```
+
+### 按角度控制执行器 — `move_gripper_deg()`
+
+**功能说明：** 以角度模式控制夹爪，并设置目标夹持力。
+
+**函数定义：**
+
+```python
+move_gripper_deg(self, value: float = 0.0, force: float = 1.0) -> None
+```
+
+**参数说明：**
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `value` | `float` | 目标夹爪角度，单位：deg（数值精度约 \(1e^{-3}\) deg） |
+| `force` | `float` | 目标夹持力，单位：N（数值精度约 \(1e^{-3}\) N） |
+
+**使用示例：**
+
+```python
+end_effector.move_gripper_deg(value=5.0, force=1.0)
 ```
 
 > **注意：**
 > 1. 建议在 `robot.connect()` 后再下发控制指令，确保通信与读线程正常工作
-> 2. `width` / `force` 单位分别是 **米（m）** / **牛（N）**，不要直接输入毫米或克力等单位
+> 2. 行程模式（`move_gripper_m`）下 `value` 单位是 **米（m）**；角度模式（`move_gripper_deg`）下 `value` 单位是 **度（deg）**；`force` 单位是 **牛（N）**。
+
+---
+
+### 控制执行器（即将废弃）— `move_gripper()`
+
+> **即将废弃：** 为兼容旧代码保留，**后续版本可能移除**。新代码请使用 `move_gripper_m()`（行程）、`move_gripper_deg()`（角度）。每次调用会在运行时发出 `DeprecationWarning`。
+
+**功能说明：** 与 `move_gripper_m(value=width, force=force)` 等价，仅为行程模式（历史参数名为 `width`）。
+
+**函数定义：**
+
+```python
+move_gripper(self, width: float = 0.0, force: float = 1.0) -> None
+```
 
 ---
 
@@ -979,9 +1047,9 @@ disable_gripper(self) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -1014,9 +1082,9 @@ calibrate_gripper(self, timeout: float = 1.0) -> bool
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
@@ -1024,7 +1092,7 @@ robot.connect()
 end_effector.disable_gripper()
 input("Please move the gripper to the zero position...")
 if end_effector.calibrate_gripper():
-    end_effector.move_gripper(width=0.0)
+    end_effector.move_gripper_m(value=0.0)
 ```
 
 ---
@@ -1066,9 +1134,9 @@ set_gripper_teaching_pendant_param(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
-cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.PIPER, firmeware_version=PiperFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 robot.connect()
