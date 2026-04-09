@@ -4,11 +4,30 @@ from typing import Type, Dict, TypeVar
 from typing_extensions import Literal
 from .constants import ROBOT_OPTION_FIELDS, ROBOT_JOINT_LIMIT_PRESET, ROBOT_JOINT_NAME
 from ..protocols.can_protocol.comms import *
-from ..protocols.can_protocol.drivers.piper import PiperDriverDefault
-from ..protocols.can_protocol.drivers.nero import NeroDriverDefault
-from ..protocols.can_protocol.drivers.piper_h import PiperHDriverDefault
-from ..protocols.can_protocol.drivers.piper_l import PiperLDriverDefault
-from ..protocols.can_protocol.drivers.piper_x import PiperXDriverDefault
+from ..protocols.can_protocol.drivers.piper import (
+    PiperDriverDefault,
+    PiperDriverV183,
+    PiperDriverV188,
+)
+from ..protocols.can_protocol.drivers.nero import (
+    NeroDriverDefault,
+    NeroDriverV111,
+)
+from ..protocols.can_protocol.drivers.piper_h import (
+    PiperHDriverDefault,
+    PiperHDriverV183,
+    PiperHDriverV188,
+)
+from ..protocols.can_protocol.drivers.piper_l import (
+    PiperLDriverDefault,
+    PiperLDriverV183,
+    PiperLDriverV188,
+)
+from ..protocols.can_protocol.drivers.piper_x import (
+    PiperXDriverDefault,
+    PiperXDriverV183,
+    PiperXDriverV188,
+)
 
 
 def extract_kwargs(func, source: dict) -> dict:
@@ -25,6 +44,43 @@ def create_agx_arm_config(
         comm: Literal["can"] = "can",
         firmeware_version: str = "default",
         **kwargs):
+    """Generate the configuration dictionary required by the robotic arm.
+
+    Parameters
+    ----------
+    robot : str
+        Robotic arm model. Use ``ArmModel`` constants for IDE hints::
+
+            from pyAgxArm import ArmModel
+            ArmModel.PIPER  / ArmModel.PIPER_H / ArmModel.PIPER_L
+            ArmModel.PIPER_X / ArmModel.NERO
+
+    comm : str
+        Communication type. Currently only ``"can"`` is supported.
+    firmeware_version : str
+        Main controller firmware version. Use per-robot-series
+        constants for IDE hints:
+
+        **Piper series** (piper / piper_h / piper_l / piper_x) — ``PiperFW``::
+
+            from pyAgxArm import PiperFW
+            PiperFW.DEFAULT  # firmware ≤ S-V1.8-2
+            PiperFW.V183     # firmware S-V1.8-3 ~ S-V1.8-7
+            PiperFW.V188     # firmware ≥ S-V1.8-8
+
+        **Nero series** — ``NeroFW``::
+
+            from pyAgxArm import NeroFW
+            NeroFW.DEFAULT   # firmware ≤ 1.10
+            NeroFW.V111      # firmware ≥ 1.11
+
+        Raw strings (``"default"`` / ``"v183"`` / ``"v188"`` / ``"v111"``) are also accepted.
+
+    **kwargs
+        Additional keyword arguments forwarded to the comm layer
+        (e.g. ``channel``, ``interface``, ``bitrate``), and robot options
+        (e.g. ``joint_limits``, ``auto_set_motion_mode``).
+    """
     config = {
         "robot": robot,
         "firmeware_version": firmeware_version,
@@ -86,26 +142,35 @@ class AgxArmFactory:
         "piper": {
             "can": {
                 "default": PiperDriverDefault,
+                "v183": PiperDriverV183,
+                "v188": PiperDriverV188,
             },
         },
         "nero": {
             "can": {
                 "default": NeroDriverDefault,
+                "v111": NeroDriverV111,
             },
         },
         "piper_h": {
             "can": {
                 "default": PiperHDriverDefault,
+                "v183": PiperHDriverV183,
+                "v188": PiperHDriverV188,
             },
         },
         "piper_l": {
             "can": {
                 "default": PiperLDriverDefault,
+                "v183": PiperLDriverV183,
+                "v188": PiperLDriverV188,
             },
         },
         "piper_x": {
             "can": {
                 "default": PiperXDriverDefault,
+                "v183": PiperXDriverV183,
+                "v188": PiperXDriverV188,
             },
         },
     }
@@ -123,9 +188,11 @@ class AgxArmFactory:
         """
         注册 Driver
 
-        robot   : piper / nero
+        robot   : piper / nero / piper_h / piper_l / piper_x
         comm    : can
-        firmeware_version : default / ...
+        firmeware_version :
+            Piper 系列: default / v183 / v188
+            Nero 系列 : default / v111
         """
         cls._registry.setdefault(robot, {})
         cls._registry[robot].setdefault(comm, {})
