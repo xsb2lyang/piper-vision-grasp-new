@@ -7,6 +7,7 @@ graft pyAgxArm/configs
 graft pyAgxArm/demos
 graft pyAgxArm/extensions
 graft pyAgxArm/scripts
+graft tests
 
 prune .github
 prune .vscode

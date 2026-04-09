@@ -1,0 +1,183 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.sh"
+      - "docs/**"
+      - "pyAgxArm/scripts/**"
+      - "asserts/**"
+      - "pyAgxArm/demos/**"
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.sh"
+      - "docs/**"
+      - "pyAgxArm/scripts/**"
+      - "asserts/**"
+      - "pyAgxArm/demos/**"
+
+jobs:
+  basic-check:
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - python-version: "3.7"
+            os: ubuntu-22.04
+          - python-version: "3.8"
+            os: ubuntu-22.04
+          - python-version: "3.9"
+            os: ubuntu-22.04
+          - python-version: "3.10"
+            os: ubuntu-22.04
+          - python-version: "3.11"
+            os: ubuntu-latest
+          - python-version: "3.12"
+            os: ubuntu-latest
+          - python-version: "3.13"
+            os: ubuntu-latest
+          - python-version: "3.14"
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Pin build tools for Python 3.6
+        if: matrix.python-version == '3.6'
+        run: python -m pip install -U "pip<22" "setuptools<60" "wheel<0.38"
+
+      - name: Pin build tools for Python 3.7
+        if: matrix.python-version == '3.7'
+        run: python -m pip install -U "pip<24" "setuptools<69" "wheel<0.43"
+
+      - name: Upgrade pip
+        if: matrix.python-version != '3.6' && matrix.python-version != '3.7'
+        run: python -m pip install -U pip
+
+      - name: Install package
+        run: python -m pip install .
+
+      - name: Smoke import
+        run: python -c "import pyAgxArm; from pyAgxArm import __version__; print(pyAgxArm.__name__, __version__)"
+
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install -U build
+          python -m build
+
+      - name: Check distribution metadata
+        run: |
+          python -m pip install -U twine
+          python -m twine check dist/*
+
+  virtual-tests:
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - python-version: "3.7"
+            os: ubuntu-22.04
+          - python-version: "3.8"
+            os: ubuntu-22.04
+          - python-version: "3.9"
+            os: ubuntu-22.04
+          - python-version: "3.10"
+            os: ubuntu-22.04
+          - python-version: "3.11"
+            os: ubuntu-latest
+          - python-version: "3.12"
+            os: ubuntu-latest
+          - python-version: "3.13"
+            os: ubuntu-latest
+          - python-version: "3.14"
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Pin tools for Python 3.6
+        if: matrix.python-version == '3.6'
+        run: python -m pip install -U "pip<22" "setuptools<60" "wheel<0.38" "pytest<8"
+
+      - name: Pin tools for Python 3.7
+        if: matrix.python-version == '3.7'
+        run: python -m pip install -U "pip<24" "setuptools<69" "wheel<0.43" "pytest<8"
+
+      - name: Upgrade pip and install pytest
+        if: matrix.python-version != '3.6' && matrix.python-version != '3.7'
+        run: |
+          python -m pip install -U pip
+          python -m pip install -U pytest
+
+      - name: Install package
+        run: python -m pip install .
+
+      - name: Run SDK API tests
+        run: python -m pytest -q tests
+
+  basic-check-py36:
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.6.15-buster
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pin build tools for Python 3.6
+        run: python -m pip install -U "pip<22" "setuptools<60" "wheel<0.38"
+
+      - name: Install package
+        run: python -m pip install .
+
+      - name: Smoke import
+        run: python -c "import pyAgxArm; from pyAgxArm import __version__; print(pyAgxArm.__name__, __version__)"
+
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install -U build
+          python -m build
+
+      - name: Check distribution metadata
+        run: |
+          python -m pip install -U twine
+          python -m twine check dist/*
+
+  virtual-tests-py36:
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.6.15-buster
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pin tools for Python 3.6
+        run: python -m pip install -U "pip<22" "setuptools<60" "wheel<0.38" "pytest<8"
+
+      - name: Install package
+        run: python -m pip install .
+
+      - name: Run SDK API tests
+        run: python -m pytest -q tests
