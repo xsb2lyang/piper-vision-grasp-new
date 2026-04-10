@@ -145,6 +145,7 @@ while True:
     # print(robot.get_firmware())
     # print(robot.get_joint_angles())
     # print(robot.get_flange_pose())
+    # print(robot.fk([0.0] * robot.joint_nums))
 
     # print(robot.get_leader_joint_angles())
     # print(end_effector.get_gripper_ctrl_states())
