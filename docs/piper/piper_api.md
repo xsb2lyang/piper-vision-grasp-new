@@ -41,6 +41,9 @@
   - [TCP Pose to Flange Pose — get_tcp2flange_pose()](#tcp-pose-to-flange-pose--get_tcp2flange_pose)
 - [Kinematics Related](#kinematics-related)
   - [Forward Kinematics — fk()](#forward-kinematics--fk)
+- [SDK Config Related](#sdk-config-related)
+  - [Set Auto Motion Mode Switching — set_auto_set_motion_mode_enabled()](#set-auto-motion-mode-switching--set_auto_set_motion_mode_enabled)
+  - [Set Joint Limits Enabled — set_joint_limits_enabled()](#set-joint-limits-enabled--set_joint_limits_enabled)
 - [Leader-Follower Arm](#leader-follower-arm)
   - [Set Leader Mode — set_leader_mode()](#set-leader-mode--set_leader_mode)
   - [Set Follower Mode — set_follower_mode()](#set-follower-mode--set_follower_mode)
@@ -157,6 +160,7 @@ create_agx_arm_config(
 | --- | --- | --- |
 | `joint_limits` | `dict` | Custom joint limits (unit: rad). Automatically assigned by default; manually entered limits are not currently applied to actual control. See example below |
 | `auto_set_motion_mode` | `bool` | Whether the SDK should automatically switch the arm into the required motion mode before motion APIs are sent. Default `True`. Set to `False` if you want to manage motion mode switching explicitly in your own application logic. |
+| `enable_joint_limits` | `bool` | Whether to enable software joint-limit clamping in runtime motion APIs. Default `True`. Set to `False` to skip model `joint_limits` clamp (basic numeric range checks still apply). |
 | `channel` | `str` | CAN channel identifier. Default `"can0"`. The documented and verified combinations are: with `"agx_cando"` use device index strings such as `"0"`, `"1"`, `"2"`; with `"socketcan"` use Linux CAN netdev names such as `"can0"` or your renamed interface; with `"slcan"` use serial device paths such as `"/dev/ttyACM0"` on macOS (`Darwin`). |
 | `interface` | `str` | CAN interface type, default `"socketcan"`. The documented and verified values are `"socketcan"` on Linux, `"agx_cando"` on Windows with the Agilex CANDO backend, and `"slcan"` on macOS (`Darwin`). |
 | `bitrate` | `int` | CAN baud rate, default `1000000` (1 Mbps) |
@@ -1180,6 +1184,66 @@ if ja is not None and fp is not None:
     fk_fp = robot.fk(ja.msg)
     print("measured flange:", fp.msg)
     print("fk flange:", fk_fp)
+```
+
+---
+
+## SDK Config Related
+
+### Set Auto Motion Mode Switching — `set_auto_set_motion_mode_enabled()`
+
+**Description:** Enable or disable automatic `set_motion_mode()` switching when calling `move_*` APIs at runtime.
+
+- `True`: keep auto-switching behavior (default).
+- `False`: do not auto switch; you need to call `set_motion_mode()` manually when needed.
+
+**Function Definition:**
+
+```python
+set_auto_set_motion_mode_enabled(self, enabled: bool) -> None
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `enabled` | `bool` | Whether to enable automatic motion-mode switching |
+
+**Usage Example:**
+
+```python
+robot.set_auto_set_motion_mode_enabled(False)
+robot.set_motion_mode(robot.OPTIONS.MOTION_MODE.J)
+robot.move_j([0.0] * robot.joint_nums)
+```
+
+---
+
+### Set Joint Limits Enabled — `set_joint_limits_enabled()`
+
+**Description:** Enable or disable software joint limits at runtime.
+
+- `True`: joint commands are clamped by configured `joint_limits` / model limits.
+- `False`: skip model `joint_limits` clamp and only keep basic numeric range protection.
+
+**Function Definition:**
+
+```python
+set_joint_limits_enabled(self, enabled: bool) -> None
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `enabled` | `bool` | Whether to enable software joint limits |
+
+**Usage Example:**
+
+```python
+robot.set_joint_limits_enabled(False)
+robot.move_j([0.0] * robot.joint_nums)
+robot.set_joint_limits_enabled(True)
 ```
 
 ---
@@ -2378,6 +2442,9 @@ print("disable periodic feedback success =", success)
   - [TCP 位姿转法兰位姿 — get_tcp2flange_pose()](#tcp-位姿转法兰位姿--get_tcp2flange_pose)
 - [运动学相关](#运动学相关)
   - [正运动学 — fk()](#正运动学--fk)
+- [SDK 配置相关](#sdk-配置相关)
+  - [设置自动切换运动模式开关 — set_auto_set_motion_mode_enabled()](#设置自动切换运动模式开关--set_auto_set_motion_mode_enabled)
+  - [设置关节软件限位开关 — set_joint_limits_enabled()](#设置关节软件限位开关--set_joint_limits_enabled)
 - [Leader-Follower 臂](#leader-follower-臂)
   - [设定主导臂（Leader）模式 — set_leader_mode()](#设定主导臂leader模式--set_leader_mode)
   - [设定跟随臂（Follower）模式 — set_follower_mode()](#设定跟随臂follower模式--set_follower_mode)
@@ -2494,6 +2561,7 @@ create_agx_arm_config(
 | --- | --- | --- |
 | `joint_limits` | `dict` | 自定义关节限位（单位：rad）。默认自动赋值，暂不会将手动输入的限位生效到实际控制中。示例见下文 |
 | `auto_set_motion_mode` | `bool` | 是否在发送运动类 API 前由 SDK 自动切换到所需运动模式。默认 `True`。如果你希望在自己的上层逻辑中显式控制模式切换，可设为 `False`。 |
+| `enable_joint_limits` | `bool` | 是否在运行时运动接口中启用关节软件限位夹紧。默认 `True`。设为 `False` 时跳过机型 `joint_limits` 夹紧（仍保留基础数值范围检查）。 |
 | `channel` | `str` | CAN 通道标识，默认 `"can0"`。当前文档已验证的写法为：`"agx_cando"` 使用 `"0"`、`"1"`、`"2"` 这类设备索引字符串；`"socketcan"` 使用 Linux 下的 CAN 网卡名，例如 `"can0"` 或重命名后的接口名；`"slcan"` 在 macOS（`Darwin`）下使用串口设备路径，例如 `"/dev/ttyACM0"`。 |
 | `interface` | `str` | CAN 接口类型，默认 `"socketcan"`。当前文档已验证并提供说明的取值为 Linux 下的 `"socketcan"`、Windows 下 Agilex CANDO 后端使用的 `"agx_cando"`、以及 macOS（`Darwin`）下的 `"slcan"`。 |
 | `bitrate` | `int` | CAN 波特率，默认 `1000000`（1 Mbps） |
@@ -3519,6 +3587,66 @@ if ja is not None and fp is not None:
     fk_fp = robot.fk(ja.msg)
     print("测得法兰:", fp.msg)
     print("fk 法兰:", fk_fp)
+```
+
+---
+
+## SDK 配置相关
+
+### 设置自动切换运动模式开关 — `set_auto_set_motion_mode_enabled()`
+
+**功能说明：** 运行时设置在调用 `move_*` 接口时，是否自动执行 `set_motion_mode()` 切换。
+
+- `True`：保持自动切换（默认）。
+- `False`：不自动切换，需要你按需手动调用 `set_motion_mode()`。
+
+**函数定义：**
+
+```python
+set_auto_set_motion_mode_enabled(self, enabled: bool) -> None
+```
+
+**参数说明：**
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `enabled` | `bool` | 是否启用自动切换运动模式 |
+
+**使用示例：**
+
+```python
+robot.set_auto_set_motion_mode_enabled(False)
+robot.set_motion_mode(robot.OPTIONS.MOTION_MODE.J)
+robot.move_j([0.0] * robot.joint_nums)
+```
+
+---
+
+### 设置关节软件限位开关 — `set_joint_limits_enabled()`
+
+**功能说明：** 运行时设置是否启用关节软件限位。
+
+- `True`：按配置的 `joint_limits` / 机型限位进行夹紧保护。
+- `False`：跳过机型 `joint_limits` 夹紧，仅保留基础数值范围保护。
+
+**函数定义：**
+
+```python
+set_joint_limits_enabled(self, enabled: bool) -> None
+```
+
+**参数说明：**
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `enabled` | `bool` | 是否启用关节软件限位 |
+
+**使用示例：**
+
+```python
+robot.set_joint_limits_enabled(False)
+robot.move_j([0.0] * robot.joint_nums)
+robot.set_joint_limits_enabled(True)
 ```
 
 ---

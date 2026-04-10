@@ -21,6 +21,7 @@ First stable release of the Python SDK for Agilex robotic arms. This version uni
 - **Tests**: Virtual CAN slaves (`tests/slaves/`), pytest suite covering factory routing, Piper/Nero motion and reads, firmware query, Piper-specific limits/crash APIs, AgxGripper and Revo2; `tests/API_COVERAGE.md` documents covered APIs and local pytest commands.
 - **CI**: GitHub Actions matrix for Python 3.7–3.14 on Ubuntu 22.04 / latest; Python 3.6 runs in a container job for continued compatibility checks.
 - **Kinematics (MDH)**: Modified Denavit–Hartenberg parameters for Piper / Piper H / L / X and Nero are shipped in `pyAgxArm/configs/mdh_modified.json`. `get_mdh(robot)` returns the link table; `fk_from_mdh(mdh, joint_radians)` computes flange pose `[x, y, z, roll, pitch, yaw]` (meters, radians) with the same orientation convention as `get_flange_pose` (`R = R_z * R_y * R_x`). `robot.fk(joint_angles)` uses the table loaded at driver construction and returns that pose list directly.
+- **Runtime SDK config toggles**: Added runtime switches `set_auto_set_motion_mode_enabled(enabled)` and `set_joint_limits_enabled(enabled)`. The corresponding config key `enable_joint_limits` is supported by all arm models (default `True`) and documented under dedicated "SDK Config Related / SDK 配置相关" sections in Piper/Nero API docs.
 
 ### Bug Fixes
 
@@ -57,6 +58,7 @@ First stable release of the Python SDK for Agilex robotic arms. This version uni
 - **测试**：虚拟 CAN 从机（`tests/slaves/`）、pytest 覆盖工厂路由、Piper/Nero 运动与读取、固件查询、Piper 专有极限/防撞等接口、夹爪与灵巧手；`tests/API_COVERAGE.md` 记录 API 覆盖与本地测试命令。
 - **CI**：GitHub Actions 对 Python 3.7–3.14 在 Ubuntu 22.04 / latest 上矩阵构建；Python 3.6 使用容器任务以保留兼容性验证。
 - **运动学（MDH）**：Piper / Piper H / L / X 与 Nero 的修正 DH 参数见 `pyAgxArm/configs/mdh_modified.json`。`get_mdh(robot)` 返回各连杆 `(d, a, alpha, theta_offset)`；`fk_from_mdh(mdh, joint_radians)` 计算法兰位姿 `[x, y, z, roll, pitch, yaw]`（米、弧度），姿态约定与 `get_flange_pose` 一致（`R = R_z·R_y·R_x`）。`robot.fk(joint_angles)` 在驱动初始化时载入对应 MDH 表，直接返回上述 6 维列表。
+- **运行时 SDK 配置开关**：新增 `set_auto_set_motion_mode_enabled(enabled)` 与 `set_joint_limits_enabled(enabled)`。全部机型支持配置项 `enable_joint_limits`（默认 `True`），并在 Piper/Nero 文档中新增独立“SDK 配置相关”章节说明。
 
 ### Bug 修复
 

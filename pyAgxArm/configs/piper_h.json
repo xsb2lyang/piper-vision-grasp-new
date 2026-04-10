@@ -19,6 +19,7 @@
         "path": ""
     },
     "auto_set_motion_mode": true,
+    "enable_joint_limits": true,
     "joint_names": [
         "joint1",
         "joint2",

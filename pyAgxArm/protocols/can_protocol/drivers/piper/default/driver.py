@@ -89,10 +89,6 @@ class Driver(ArmDriverAbstract):
         super().__init__(config)
         self._parser: Parser = self._parser
         self._msg_mode = self._MSG_ModeCtrl()
-        auto_set_motion_mode = self._config.get("auto_set_motion_mode", True)
-        if not isinstance(auto_set_motion_mode, bool):
-            raise ValueError("Config `auto_set_motion_mode` should be bool")
-        self._auto_set_motion_mode = auto_set_motion_mode
 
     def _set_mode(self) -> None:
         """Send cached mode message (`self._msg_mode`) to the controller."""
@@ -102,7 +98,7 @@ class Driver(ArmDriverAbstract):
         self, motion_mode: Literal['p', 'j', 'l', 'c', 'mit', 'js']
     ) -> None:
         """Set motion mode only when auto mode-setting is enabled."""
-        if self._auto_set_motion_mode:
+        if self._auto_set_motion_mode_enabled:
             self.set_motion_mode(motion_mode)
 
     def _deal_move_p_msgs(self, pose: List[float]):
@@ -136,19 +132,35 @@ class Driver(ArmDriverAbstract):
 
     def _deal_move_j_msgs(self, joints: List[float]):
         """Get joint control messages."""
-        joints = Validator.clamp_joints(
-            joints,
-            length=self._JOINT_NUMS,
-            joints_limit=list(
-                self._config.get(
-                    "joint_limits", {}
-                ).values()
+        if self._joint_limits_enabled:
+            joints = Validator.clamp_joints(
+                joints,
+                length=self._JOINT_NUMS,
+                joints_limit=list(
+                    self._config.get(
+                        "joint_limits", {}
+                    ).values()
+                )
             )
-        )
+        else:
+            joints = Validator.clamp_joints(
+                joints,
+                length=self._JOINT_NUMS
+            )
 
         # Convert user inputs to protocol fields.
         joints_mdeg = [round(j * RAD2DEG * 1e3) for j in joints]
         return self._parser._make_joint_ctrl_msgs(joints_mdeg)
+
+    def _mit_position_limits(self, joint_index: int):
+        if not self._joint_limits_enabled:
+            return -12.5, 12.5
+        limits = self._config.get(
+            "joint_limits", {}
+        ).get(f"joint{joint_index}", None)
+        if limits is not None:
+            return limits[0], limits[1]
+        return -12.5, 12.5
 
     def _all_joints_bool(self, fn: Callable[[int], bool]) -> bool:
         """Apply a bool-returning function to all joints and AND results."""
@@ -1210,16 +1222,7 @@ class Driver(ArmDriverAbstract):
             raise ValueError(
                 f"Joint index should be {self._JOINT_INDEX_LIST[:-1]}")
 
-        limits = self._config.get(
-            "joint_limits", {}
-        ).get(f"joint{joint_index}", None)
-
-        if limits is not None:
-            lower_limit = limits[0]
-            upper_limit = limits[1]
-        else:
-            lower_limit = -12.5
-            upper_limit = 12.5
+        lower_limit, upper_limit = self._mit_position_limits(joint_index)
         
         if not Validator.is_within_limit(p_des, lower_limit, upper_limit):
             print(

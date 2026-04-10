@@ -27,6 +27,7 @@ def create_demo_config():
             interface="agx_cando",
             channel="0",
             # auto_set_motion_mode=False,
+            # enable_joint_limits=False,
             # receive_own_messages=True,
             # local_loopback=True,
         )
@@ -37,6 +38,7 @@ def create_demo_config():
             interface="socketcan",
             channel="can0",
             # auto_set_motion_mode=False,
+            # enable_joint_limits=False,
             # receive_own_messages=True,
             # local_loopback=True,
         )
@@ -47,6 +49,7 @@ def create_demo_config():
             interface="slcan",
             channel="/dev/ttyACM0",
             # auto_set_motion_mode=False,
+            # enable_joint_limits=False,
         )
     raise RuntimeError(
         "This demo currently supports Linux `socketcan`, Windows `agx_cando`, and macOS `slcan`."
@@ -63,6 +66,12 @@ print(robot.__doc__)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 # end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 print(end_effector.__doc__)
+
+
+# -------------------------- Config ---------------------------
+
+# robot.set_auto_set_motion_mode_enabled(False)
+# robot.set_joint_limits_enabled(False)
 
 
 # -------------------------- Basic ---------------------------

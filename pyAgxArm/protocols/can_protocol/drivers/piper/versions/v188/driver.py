@@ -159,16 +159,7 @@ class Driver(V183Driver):
             raise ValueError(
                 f"Joint index should be {self._JOINT_INDEX_LIST[:-1]}")
 
-        limits = self._config.get(
-            "joint_limits", {}
-        ).get(f"joint{joint_index}", None)
-
-        if limits is not None:
-            lower_limit = limits[0]
-            upper_limit = limits[1]
-        else:
-            lower_limit = -12.5
-            upper_limit = 12.5
+        lower_limit, upper_limit = self._mit_position_limits(joint_index)
 
         if not Validator.is_within_limit(p_des, lower_limit, upper_limit):
             print(

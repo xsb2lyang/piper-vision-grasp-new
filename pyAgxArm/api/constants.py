@@ -4,22 +4,27 @@ ROBOT_OPTION_FIELDS = {
     "nero": {
         "joint_limits",
         "auto_set_motion_mode",
+        "enable_joint_limits",
     },
     "piper": {
         "joint_limits",
         "auto_set_motion_mode",
+        "enable_joint_limits",
     },
     "piper_h": {
         "joint_limits",
         "auto_set_motion_mode",
+        "enable_joint_limits",
     },
     "piper_l": {
         "joint_limits",
         "auto_set_motion_mode",
+        "enable_joint_limits",
     },
     "piper_x": {
         "joint_limits",
         "auto_set_motion_mode",
+        "enable_joint_limits",
     },
 }
 
