@@ -18,7 +18,11 @@
 
 ### 机械臂读取类（Piper / Nero）
 
-`get_joint_angles`, `get_flange_pose`, `get_arm_status`, `get_driver_states`, `get_motor_states`, `get_joint_enable_status`, `get_joints_enable_status_list`
+`get_joint_angles`, `get_flange_pose`, `fk`, `get_arm_status`, `get_driver_states`, `get_motor_states`, `get_joint_enable_status`, `get_joints_enable_status_list`
+
+### 运动学（MDH，见 `test_mdh_fk.py`）
+
+`get_mdh`, `fk_from_mdh`（`pyAgxArm.utiles.mdh_kinematics`）
 
 ### 机械臂读取与信息（Piper / Nero）
 
@@ -53,4 +57,6 @@
 `python3 -m pytest -q tests/test_agx_gripper_virtual_can.py tests/test_revo2_virtual_can.py`
 
 `python3 -m pytest -q tests/test_factory_config.py`
+
+`python3 -m pytest -q tests/test_mdh_fk.py`
 
