@@ -1,5 +1,5 @@
 {
-    "robot": "piper",
+    "robot": "piper_l",
     "firmeware_version": "default",
     "comm": {
         "type": "can",
