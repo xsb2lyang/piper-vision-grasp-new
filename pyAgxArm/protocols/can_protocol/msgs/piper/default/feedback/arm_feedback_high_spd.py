@@ -62,7 +62,7 @@ class ArmMsgFeedbackHighSpd(AttributeBase):
         Byte 7: Motor Position (Least Significant Byte)
     '''
     _derived_fields_ = ("torque",)
-    _COEFFICIENT_1 = 1.18125
+    _COEFFICIENT_1 = 1.18125 * 4.0
     _COEFFICIENT_2 = 0.95844
     _VALID_CAN_ID = 0x000
     _VALID_CAN_ID_1 = [0x251, 0x252, 0x253]

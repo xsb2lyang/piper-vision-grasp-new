@@ -23,16 +23,42 @@ class DriverContext:
 
         self._read_th = None
         self._monitor_th = None
+        self._read_error = None
 
-        self._comm_initialized = False  # 标记是否已初始化
+        self._comm_initialized = False
 
         # Stamp dictionary for request throttling (used by _request_and_get).
         # Key is an arbitrary string (e.g. "firmware", "joint_acc:3").
         self._req_stamp: Dict[str, float] = {}
 
-    def create_comm(self, config: dict={}, comm: str="can"):
-        cfg = config or self._config or create_comm_config(comm)
+    def _resolve_comm_config(self, config: Optional[dict], comm: str) -> dict:
+        source = config if config is not None else self._config
+        if not source:
+            return create_comm_config(comm)
+
+        if "comm" in source:
+            comm_cfg = source["comm"]
+            if not isinstance(comm_cfg, dict):
+                raise TypeError("config['comm'] must be a dict")
+            actual_comm = comm_cfg.get("type", comm)
+            if actual_comm != comm:
+                raise ValueError(
+                    f"Comm config type mismatch: expected '{comm}', got '{actual_comm}'."
+                )
+            if comm not in comm_cfg or not isinstance(comm_cfg[comm], dict):
+                raise KeyError(f"Missing comm config payload for '{comm}'.")
+            return comm_cfg[comm].copy()
+
+        return source.copy()
+
+    def create_comm(self, config: Optional[dict] = None, comm: str = "can"):
+        cfg = self._resolve_comm_config(config, comm)
         self.comm = CommsFactory.create_comm(comm, "impl", config=cfg, comm_type=comm)
+        if self.comm is None:
+            raise RuntimeError(f"Failed to create {comm} communication instance.")
+        self.comm.set_callback(self._run_parser_packet_funs)
+        self._read_error = None
+        self._comm_initialized = True
         return self.comm
 
     def init_comm(self):
@@ -40,16 +66,36 @@ class DriverContext:
             return self.comm
         comm_cfg = self._config["comm"]
         comm_type = comm_cfg["type"]
+        comm = None
+        try:
+            comm = CommsFactory.create_comm(
+                comm_type,
+                "impl",
+                config=comm_cfg[comm_type],
+                comm_type=comm_type
+            )
+            if comm is None:
+                raise RuntimeError(f"Failed to create {comm_type} communication instance.")
+            comm.set_callback(self._run_parser_packet_funs)
+            if not comm.is_connected():
+                comm.connect()
+            if not comm.is_connected():
+                raise RuntimeError(f"Failed to connect {comm_type} communication instance.")
+        except Exception:
+            if comm is not None:
+                try:
+                    comm.close()
+                except Exception:
+                    pass
+            self.comm = None
+            self._comm_initialized = False
+            raise
 
-        self.comm = CommsFactory.create_comm(
-            comm_type,
-            "impl",
-            config=comm_cfg[comm_type],
-            comm_type=comm_type
-        )
+        self.comm = comm
+        self._read_error = None
         self._comm_initialized = True
-        self.comm.set_callback(self._run_parser_packet_funs)
-    
+        return self.comm
+
     def is_comm_init(self):
         return self._comm_initialized
 
@@ -58,14 +104,14 @@ class DriverContext:
 
     def register_parser_packet_fun(self, cb):
         self._parser_packet_fun_list.append(cb)
-    
+
     def _run_parser_packet_funs(self, rx_data):
         for cb in self._parser_packet_fun_list:
             cb(rx_data)
 
     def register_data_monitor_fun(self, cb):
         self._data_monitor_fun_list.append(cb)
-    
+
     def _run_data_monitor_funs(self):
         for cb in self._data_monitor_fun_list:
             cb()
@@ -76,6 +122,7 @@ class DriverContext:
 
         self._read_stop_event.clear()
         self._monitor_stop_event.clear()
+        self._read_error = None
 
         self._read_th = threading.Thread(
             target=self._read_loop, daemon=True
@@ -89,9 +136,69 @@ class DriverContext:
 
         self.fps.start()
 
+    def stop_th(self, join_timeout: float = 1.0):
+        """
+        Stop internal reader/monitor threads and FPS manager.
+
+        This method is idempotent and can be safely called multiple times.
+        """
+        # Signal threads to exit
+        self._read_stop_event.set()
+        self._monitor_stop_event.set()
+
+        # Join threads if they were started
+        if self._read_th is not None and self._read_th.is_alive():
+            self._read_th.join(timeout=join_timeout)
+        if self._monitor_th is not None and self._monitor_th.is_alive():
+            self._monitor_th.join(timeout=join_timeout)
+
+        self._read_th = None
+        self._monitor_th = None
+
+        # Stop FPS manager thread
+        self.fps.stop()
+
+    def shutdown(self, join_timeout: float = 1.0):
+        """
+        Fully shut down communication and clean up threads/resources.
+
+        - Stop internal threads and FPSManager
+        - Close underlying comm and clear callbacks
+        """
+        # Stop internal threads first
+        self.stop_th(join_timeout=join_timeout)
+
+        # Then close communication resources
+        if self.comm is not None:
+            try:
+                # Clear callback to avoid dangling references
+                if hasattr(self.comm, "clear_callback"):
+                    self.comm.clear_callback()
+            except Exception:
+                # Ignore callback clear failure, do not block shutdown
+                pass
+
+            try:
+                self.comm.close()
+            except Exception:
+                # Ignore close errors from underlying comm layer
+                pass
+
+            self.comm = None
+            self._comm_initialized = False
+            self._read_error = None
+
     def _read_loop(self):
         while not self._read_stop_event.is_set():
-            self.comm.recv()
+            try:
+                rx_msg = self.comm.recv()
+            except Exception as exc:
+                self._read_error = exc
+                self._read_stop_event.set()
+                self._monitor_stop_event.set()
+                break
+            if rx_msg is None:
+                time.sleep(0.0005)
 
     def _monitor_loop(self):
         while not self._monitor_stop_event.is_set():
@@ -121,6 +228,7 @@ class DriverContext:
             True if `func()` returned True before timeout, False otherwise.
         """
         self._validate_timeout(timeout)
+        self._raise_if_read_failed()
 
         if timeout == 0.0:
             # Non-blocking mode.
@@ -128,10 +236,19 @@ class DriverContext:
 
         start_time = time.time()
         while time.time() - start_time < timeout:
+            self._raise_if_read_failed()
             if func():
                 return True
             time.sleep(0.0005)
         return False
+
+    def _raise_if_read_failed(self) -> None:
+        if self._read_error is None:
+            return
+        raise RuntimeError(
+            "Background CAN receive loop stopped because of a communication error. "
+            "Reconnect the device and retry."
+        ) from self._read_error
 
     def _request_and_get(
         self,

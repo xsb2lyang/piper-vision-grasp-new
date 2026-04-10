@@ -6,10 +6,12 @@
 
 - [Switch to 中文](#nero-机械臂-api-使用文档)
 - [Import Module](#import-module)
+- [Firmware Version](#firmware-version)
 - [Create Instance and Connect](#create-instance-and-connect)
   - [Create Configuration — create_agx_arm_config()](#create-configuration--create_agx_arm_config)
   - [Create Arm Driver Instance — AgxArmFactory.create_arm()](#create-arm-driver-instance--agxarmfaborycreate_arm)
   - [Connect — connect()](#connect--connect)
+  - [Disconnect — disconnect()](#disconnect--disconnect)
   - [Initialize End Effector — init_effector()](#initialize-end-effector--init_effector)
 - [General Status](#general-status)
   - [Get Joint Count — joint_nums](#get-joint-count--joint_nums)
@@ -22,6 +24,7 @@
   - [Get Driver States — get_driver_states()](#get-driver-states--get_driver_states)
   - [Get Joint Enable Status — get_joint_enable_status()](#get-joint-enable-status--get_joint_enable_status)
   - [Get All Joint Enable Status List — get_joints_enable_status_list()](#get-all-joint-enable-status-list--get_joints_enable_status_list)
+  - [Get Firmware Info — get_firmware()](#get-firmware-info--get_firmware)
 - [Parameter Settings](#parameter-settings)
   - [Set Speed Percent — set_speed_percent()](#set-speed-percent--set_speed_percent)
   - [Set Motion Mode — set_motion_mode()](#set-motion-mode--set_motion_mode)
@@ -30,6 +33,11 @@
   - [Get TCP Pose — get_tcp_pose()](#get-tcp-pose--get_tcp_pose)
   - [Flange Pose to TCP Pose — get_flange2tcp_pose()](#flange-pose-to-tcp-pose--get_flange2tcp_pose)
   - [TCP Pose to Flange Pose — get_tcp2flange_pose()](#tcp-pose-to-flange-pose--get_tcp2flange_pose)
+- [Kinematics Related](#kinematics-related)
+  - [Forward Kinematics — fk()](#forward-kinematics--fk)
+- [SDK Config Related](#sdk-config-related)
+  - [Set Auto Motion Mode Switching — set_auto_set_motion_mode_enabled()](#set-auto-motion-mode-switching--set_auto_set_motion_mode_enabled)
+  - [Set Joint Limits Enabled — set_joint_limits_enabled()](#set-joint-limits-enabled--set_joint_limits_enabled)
 - [Leader-Follower Arm](#leader-follower-arm)
   - [Set Normal Mode — set_normal_mode()](#set-normal-mode--set_normal_mode)
   - [Set Leader Mode — set_leader_mode()](#set-leader-mode--set_leader_mode)
@@ -38,8 +46,8 @@
 - [Motion Control](#motion-control)
   - [Enable — enable()](#enable--enable)
   - [Disable — disable()](#disable--disable)
-  - [Reset — reset()](#reset--reset)
   - [Electronic Emergency Stop — electronic_emergency_stop()](#electronic-emergency-stop--electronic_emergency_stop)
+  - [Reset — reset()](#reset--reset)
   - [Joint Motion — move_j()](#joint-motion--move_j)
   - [Joint Motion (Follower Mode) — move_js()](#joint-motion-follower-mode--move_js)
   - [Point-to-Point Motion — move_p()](#point-to-point-motion--move_p)
@@ -52,7 +60,48 @@
 ## Import Module
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+```
+
+---
+
+## Firmware Version
+
+Nero series firmware versioning is independent from the Piper series. The SDK uses the `firmeware_version` parameter in `create_agx_arm_config()` to select the matching driver. The firmware version number used here is the software version number, such as `"1.11"`.
+
+### Version List
+
+| SDK Version | Constant | Firmware Range | Key Differences |
+| --- | --- | --- | --- |
+| `"default"` | `NeroFW.DEFAULT` | ≤ 1.10 | MIT torque: joints 1-2 input range ±24 N·m, joints 3-4 range ±18 N·m, joints 5-7 range ±8 N·m; 8-bit encoding |
+| `"v111"` | `NeroFW.V111` | ≥ 1.11 | MIT torque: all joints range ±16 N·m; 12-bit encoding; CRC checksum removed; motion mode code changed |
+
+### How to Choose
+
+Check the firmware version on the arm's main controller, you can use the [get_firmware()](#get-firmware-info--get_firmware) method (format: **X.XX**), then pick the corresponding SDK version:
+
+| Your Firmware | `firmeware_version` to Use | Constant |
+| --- | --- | --- |
+| 1.10 or earlier | `"default"` (or omit the parameter) | `NeroFW.DEFAULT` |
+| 1.11 or later  | `"v111"` | `NeroFW.V111` |
+
+> **⚠️ Safety Warning:** Using the wrong firmware version may cause the SDK to send incorrectly encoded torque commands. In particular, sending v111 protocol data to an older firmware arm may result in **dangerous unexpected motion**. Always verify your firmware version before choosing the SDK version.
+
+**Usage Example (recommended — use constants for IDE auto-complete):**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+
+# Firmware is 1.10, use NeroFW.DEFAULT
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+```
+
+Raw strings are also accepted (backward-compatible):
+
+```python
+cfg = create_agx_arm_config(robot="nero", firmeware_version="default", channel="can0")
 ```
 
 ---
@@ -78,21 +127,25 @@ create_agx_arm_config(
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `robot` | `str` | Robotic arm model. Options: `"nero"` / `"piper"` / `"piper_h"` / `"piper_l"` / `"piper_x"` |
+| `robot` | `str` | Robotic arm model. Use `ArmModel` constants: `ArmModel.NERO` / `ArmModel.PIPER` / `ArmModel.PIPER_H` / `ArmModel.PIPER_L` / `ArmModel.PIPER_X` (raw strings also accepted) |
 | `comm` | `str` | Communication type. Options: `"can"` (default). Note: `comm` is not the CAN channel name; the CAN channel is specified by `channel` |
-| `firmeware_version` | `str` | Controller firmware version, default `"default"` |
+| `firmeware_version` | `str` | Main controller firmware version. Use per-robot constants: Nero series → `NeroFW.DEFAULT` / `NeroFW.V111`. See [Firmware Version](#firmware-version). Default `"default"` |
 
 **Optional Keyword Arguments (`**kwargs`):**
 
 | Name | Type | Description |
 | --- | --- | --- |
 | `joint_limits` | `dict` | Custom joint limits (unit: rad). Defaults are assigned automatically; manually entered limits are not currently applied to actual control. See example below |
-| `channel` | `str` | CAN channel name, default `"can0"` |
-| `interface` | `str` | CAN interface type, default `"socketcan"`. On Linux, the official CAN module must use `"socketcan"`; on macOS, use a serial CAN module and set to `"slcan"` |
+| `auto_set_motion_mode` | `bool` | Whether the SDK should automatically switch the arm into the required motion mode before motion APIs are sent. Default `True`. Set to `False` if you want to manage motion mode switching explicitly in your own application logic. |
+| `enable_joint_limits` | `bool` | Whether to enable software joint-limit clamping in runtime motion APIs. Default `True`. Set to `False` to skip model `joint_limits` clamp (basic numeric range checks still apply). |
+| `channel` | `str` | CAN channel identifier. Default `"can0"`. The documented and verified combinations are: with `"agx_cando"` use device index strings such as `"0"`, `"1"`, `"2"`; with `"socketcan"` use Linux CAN netdev names such as `"can0"` or your renamed interface; with `"slcan"` use serial device paths such as `"/dev/ttyACM0"` on macOS (`Darwin`). |
+| `interface` | `str` | CAN interface type, default `"socketcan"`. The documented and verified values are `"socketcan"` on Linux, `"agx_cando"` on Windows with the Agilex CANDO backend, and `"slcan"` on macOS (`Darwin`). |
 | `bitrate` | `int` | CAN baud rate, default `1000000` (1 Mbps) |
-| `enable_check_can` | `bool` | Whether to check the CAN module when creating the Comm instance, default `True` |
+| `enable_check_can` | `bool` | Whether to check the CAN module when creating the Comm instance, default `True`. This pre-check is currently only effective for Linux `socketcan`; for other backends (for example, Windows `agx_cando` and macOS `slcan`) the actual availability check happens when the CAN bus is opened. |
 | `auto_connect` | `bool` | Whether to automatically create the CAN Bus instance, default `True` |
-| `timeout` | `float` | CAN Bus read/write timeout (seconds), default `1.0` |
+| `timeout` | `float` | CAN Bus read/write timeout (seconds), default `0.001` |
+| `receive_own_messages` | `bool` | Whether the local CAN backend should receive frames sent by the same process/device. Default `False`. This is useful for debugging, loopback tests, or virtual/single-node verification, but is usually not recommended for normal arm control. Backend support depends on the selected `interface`. The `slcan` backend on macOS generally does not support this; **do not pass** it when using `interface="slcan"`. |
+| `local_loopback` | `bool` | Whether to enable CAN **local loopback**. Default is `False` (loopback disabled), so your local terminal/process will **not** receive the CAN frames it sends itself. You may enable it for debugging, but it is **not recommended** for normal SDK usage because it may consume bus receive resources and impact reading performance. The `slcan` backend on macOS generally does not support this; **do not pass** it when using `interface="slcan"`. |
 
 **Return Value:** `dict`
 
@@ -101,16 +154,10 @@ Example return structure:
 ```json
 {
     "robot": "nero",
-    "comm": {
-        "type": "can",
-        "can": {
-            "channel": "can0",
-            "interface": "socketcan",
-            "bitrate": 1000000,
-            "enable_check_can": true,
-            "auto_connect": true,
-            "timeout": 1.0
-        }
+    "firmeware_version": "default",
+    "log": {
+        "level": "INFO",
+        "path": ""
     },
     "joint_names": ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"],
     "joint_limits": {
@@ -121,18 +168,40 @@ Example return structure:
         "joint5": [-2.757621, 2.757621],
         "joint6": [-0.733039, 0.959932],
         "joint7": [-1.570797, 1.570797]
+    },
+    "comm": {
+        "type": "can",
+        "can": {
+            "channel": "can0",
+            "interface": "socketcan",
+            "bitrate": 1000000,
+            "enable_check_can": true,
+            "auto_connect": true,
+            "timeout": 0.001,
+            "receive_own_messages": false,
+            "local_loopback": false
+        }
     }
 }
 ```
 
-> **Tip:** Joint motion limits are in **radians (rad)**; gripper motion limits are in **meters (m)**.
+> **Note:** `auto_set_motion_mode` is added to the top-level config only when you pass it explicitly.
+
+Verified interface/channel examples:
+
+- Linux `socketcan`: `create_agx_arm_config(..., interface="socketcan", channel="can0")`
+- Windows `agx_cando`: `create_agx_arm_config(..., interface="agx_cando", channel="0")`
+- macOS `slcan`: `create_agx_arm_config(..., interface="slcan", channel="/dev/ttyACM0")`
+
+On Windows, `interface="agx_cando"` requires the separately installed `python-can-agx-cando` plugin. Install it from `https://github.com/agilexrobotics/python-can-agx-cando.git`, then run `pip3 install .` in that repository before using `pyAgxArm`.
+On macOS (`Darwin`), when using `interface="slcan"` with the default channel, grant serial permission first.
 
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config
+from pyAgxArm import create_agx_arm_config, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 print(cfg)
 ```
 
@@ -159,9 +228,9 @@ create_arm(cls, config: dict, **kwargs) -> T
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 ```
 
@@ -186,11 +255,47 @@ connect(self, start_read_thread: bool = True) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
+```
+
+---
+
+### Disconnect — `disconnect()`
+
+**Description:** Disconnect from the arm and release underlying threads and CAN resources.
+
+This method is **idempotent** and can be safely called when the arm instance is no longer needed, e.g. after reading firmware version and before creating a new instance.
+
+> **Note:** After `disconnect()`, the internal communication handle may be released. Calling `robot.is_connected()` will return `False`.
+
+**Function Definition:**
+
+```python
+disconnect(self, join_timeout: float = 1.0) -> None
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `join_timeout` | `float` | Timeout (seconds) for joining background threads during shutdown, default `1.0` |
+
+**Usage Example:**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+print(robot.is_connected())
+
+robot.disconnect()
+print(robot.is_connected())
 ```
 
 ---
@@ -211,20 +316,20 @@ init_effector(self, effector: str) -> EffectorDriver
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `effector` | `str` | Effector type (it is recommended to use `robot.EFFECTOR.xxx` constants) |
+| `effector` | `str` | Effector type (it is recommended to use `robot.OPTIONS.EFFECTOR.xxx` constants) |
 
 **Return Value:** `EffectorDriver`
 
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
-end_effector = robot.init_effector(robot.EFFECTOR.REVO2)
+end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 ```
 
 ---
@@ -247,9 +352,9 @@ joint_nums: int
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -299,21 +404,85 @@ get_arm_status(self) -> MessageAbstract[ArmMsgFeedbackStatus] | None
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `ctrl_mode` | `int` | Control mode (standby / CAN / teach / Ethernet / WiFi / offline trajectory, etc.) |
-| `arm_status` | `int` | Arm status (normal / emergency stop / singularity / over-limit / collision, etc.) |
-| `mode_feedback` | `int` | Mode feedback (MOVE P/J/L/C/MIT, etc.) |
-| `teach_status` | `int` | Teach status (start recording / stop recording / execute / pause / resume / terminate, etc.) |
-| `motion_status` | `int` | Motion status: `0` reached; `1` not reached |
+| `ctrl_mode` | `int` | Control mode enum (see meanings below) |
+| `arm_status` | `int` | Arm status enum (see meanings below) |
+| `mode_feedback` | `int` | Mode feedback enum (see meanings below) |
+| `teach_status` | `int` | Teaching state enum (see meanings below) |
+| `motion_status` | `int` | Motion status enum (see meanings below) |
 | `trajectory_num` | `int` | Trajectory point number (feedback in offline trajectory mode) |
-| `err_status` | `object` | Error status bits (joint angle over-limit / joint communication error, etc.) |
+| `err_status` | `object` | Error status bitfield converted to boolean flags (see meanings below) |
+
+**Enum meanings for `ArmMsgFeedbackStatus.msg`:**
+
+`ctrl_mode` (control mode):
+- `0x00` STANDBY: Standby mode
+- `0x01` CAN_CTRL: CAN instruction control
+- `0x02` TEACHING_MODE: Teaching mode
+- `0x03` ETHERNET_CONTROL_MODE: Ethernet control mode
+- `0x04` WIFI_CONTROL_MODE: Wi-Fi control mode
+- `0x05` REMOTE_CONTROL_MODE: Remote control mode
+- `0x06` LINKAGE_TEACHING_INPUT_MODE: Linkage teaching input mode
+- `0x07` OFFLINE_TRAJECTORY_MODE: Offline trajectory mode
+- `0x08` TCP_CTRL: TCP control mode
+- `0xFF` UNKNOWN
+
+`arm_status` (robot arm status):
+- `0x00` NORMAL
+- `0x01` EMERGENCY_STOP
+- `0x02` NO_SOLUTION
+- `0x03` SINGULARITY_POINT
+- `0x04` TARGET_POS_EXCEEDS_LIMIT
+- `0x05` JOINT_COMMUNICATION_ERR
+- `0x06` JOINT_BRAKE_NOT_RELEASED
+- `0x07` COLLISION_OCCURRED
+- `0x08` OVERSPEED_DURING_TEACHING_DRAG
+- `0x09` JOINT_STATUS_ERR
+- `0x0A` OTHER_ERR
+- `0x0B` TEACHING_RECORD
+- `0x0C` TEACHING_EXECUTION
+- `0x0D` TEACHING_PAUSE
+- `0x0E` MAIN_CONTROLLER_NTC_OVER_TEMPERATURE
+- `0x0F` RELEASE_RESISTOR_NTC_OVER_TEMPERATURE
+- `0xFF` UNKNOWN
+
+`mode_feedback` (current motion mode feedback):
+- `0x00` MOVE_P
+- `0x01` MOVE_J
+- `0x02` MOVE_L
+- `0x03` MOVE_C
+- `0x04` MOVE_MIT (Nero firmware < 1.11; use `NeroFW.DEFAULT`)
+- `0x05` MOVE_CPV
+- `0x06` MOVE_MIT (Nero firmware >= 1.11; use `NeroFW.V111`)
+- `0xFF` UNKNOWN
+
+`teach_status` (teaching state):
+- `0x00` DISABLED
+- `0x01` START_RECORDING
+- `0x02` STOP_RECORDING
+- `0x03` EXECUTE_TRAJECTORY
+- `0x04` PAUSE_EXECUTION
+- `0x05` RESUME_EXECUTION
+- `0x06` TERMINATE_EXECUTION
+- `0x07` MOVE_TO_START
+- `0xFF` UNKNOWN
+
+`motion_status`:
+- `0x00` REACH_TARGET_POS_SUCCESSFULLY
+- `0x01` REACH_TARGET_POS_FAILED
+- `0xFF` UNKNOWN
+
+`err_status` (16-bit error code -> boolean flags):
+- `msg.err_code`: original 16-bit error code integer (0~65535).
+- `msg.err_status.joint_i_angle_limit` (`i=1..7`): `True` means joint i angle limit exceeded.
+- `msg.err_status.communication_status_joint_i` (`i=1..7`): `True` means communication exception on joint i.
 
 **Usage Example:**
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -345,9 +514,9 @@ get_joint_angles(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -384,9 +553,9 @@ get_flange_pose(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -430,9 +599,9 @@ get_motor_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7]) -> MessageAbst
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -475,9 +644,9 @@ get_driver_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7]) -> MessageAbs
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -511,9 +680,9 @@ get_joint_enable_status(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7, 255]) ->
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -538,13 +707,54 @@ get_joints_enable_status_list(self) -> list[bool]
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 print(robot.get_joints_enable_status_list())
+```
+
+---
+
+### Get Firmware Info — `get_firmware()`
+
+**Description:** Read the robotic arm firmware information (software version). This interface sends a query frame and waits for the corresponding feedback.
+
+**Function Definition:**
+
+```python
+get_firmware(self, timeout: float = 1.0, min_interval: float = 1.0) -> dict | None
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `timeout` | `float` | Timeout for waiting for feedback (seconds), default `1.0`; `0.0` means non-blocking |
+| `min_interval` | `float` | Minimum request interval (seconds), default `1.0` |
+
+**Return Value:** `dict | None`
+
+Common fields:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `software_version` | `str` | Software version (e.g., `1.10`) |
+
+**Usage Example:**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+fw = robot.get_firmware()
+if fw is not None:
+    print(fw)
 ```
 
 ---
@@ -570,9 +780,9 @@ set_speed_percent(self, percent: int = 100) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -607,9 +817,9 @@ set_motion_mode(self, motion_mode: Literal["p", "j", "l", "c", "mit", "js"] = "p
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -641,9 +851,9 @@ set_tcp_offset(self, pose: list[float]) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -670,9 +880,9 @@ get_tcp_pose(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -709,16 +919,16 @@ get_flange2tcp_pose(self, flange_pose: list[float]) -> list[float]
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 robot.set_tcp_offset([0.0, 0.0, 0.10, 0.0, 0.0, 0.0])
 
 # Directly specify a flange pose
-tcp_pose = robot.get_flange2tcp_pose([-0.16, -0.043, 0.69, 1.118, 0.9272, 0.1482])
+tcp_pose = robot.get_flange2tcp_pose([-0.45, -0.0, 0.45, -1.5708, 0.0, -3.14159])
 print("tcp_pose =", tcp_pose)
 
 # Obtain from current pose; result is the same as get_tcp_pose()
@@ -751,15 +961,15 @@ get_tcp2flange_pose(self, tcp_pose: list[float]) -> list[float]
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 robot.set_tcp_offset([0.0, 0.0, 0.10, 0.0, 0.0, 0.0])
 
-target_tcp_pose = [-0.16, -0.043, 0.69, 1.118, 0.9272, 0.1482]
+target_tcp_pose = [-0.45, -0.0, 0.45, -1.5708, 0.0, -3.14159]
 target_flange_pose = robot.get_tcp2flange_pose(target_tcp_pose)
 print("target_flange_pose =", target_flange_pose)
 
@@ -768,11 +978,147 @@ print("target_flange_pose =", target_flange_pose)
 
 ---
 
+## Kinematics Related
+
+### Forward Kinematics — `fk()`
+
+**Description:** Compute the end **flange pose** from a given set of joint angles using the robot's built-in modified DH model.
+
+This is an **offline** computation (no CAN I/O). The output pose format matches `.msg` from [get_flange_pose()](#get-flange-pose--get_flange_pose):  
+`[x, y, z, roll, pitch, yaw]` in the **base frame**, where `x/y/z` are meters and `roll/pitch/yaw` are radians (ZYX RPY convention used by the SDK).
+
+> **Note:** Nero has 7 DOF. The `fk()` input is a 7-element joint list.
+
+**Function Definition:**
+
+```python
+fk(self, joint_angles: list[float]) -> list[float]
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `joint_angles` | `list[float]` | Joint angles in **rad**, length 7: `[j1, j2, j3, j4, j5, j6, j7]` |
+
+**Return Value:** `list[float]`
+
+`[x, y, z, roll, pitch, yaw]` — flange pose in base frame.
+
+**Usage Examples:**
+
+1) Combine with [get_joint_angles()](#get-joint-angles--get_joint_angles) (current arm state → FK):
+
+```python
+ja = robot.get_joint_angles()
+if ja is not None:
+    flange_pose = robot.fk(ja.msg)
+    print("fk flange:", flange_pose)
+```
+
+2) Combine with [get_leader_joint_angles()](#get-leader-joint-angles--get_leader_joint_angles) (leader angles → FK):
+
+```python
+mja = robot.get_leader_joint_angles()
+if mja is not None:
+    leader_flange_pose = robot.fk(mja.msg)
+    print("leader fk flange:", leader_flange_pose)
+```
+
+3) Combine with [get_flange2tcp_pose()](#flange-pose-to-tcp-pose--get_flange2tcp_pose) (FK flange → derived TCP):
+
+```python
+ja = robot.get_joint_angles()
+if ja is not None:
+    flange_pose = robot.fk(ja.msg)
+    tcp_pose = robot.get_flange2tcp_pose(flange_pose)
+    print("fk tcp:", tcp_pose)
+```
+
+4) Compare measured flange pose vs FK result (for quick consistency checks):
+
+```python
+ja = robot.get_joint_angles()
+fp = robot.get_flange_pose()
+if ja is not None and fp is not None:
+    fk_fp = robot.fk(ja.msg)
+    print("measured flange:", fp.msg)
+    print("fk flange:", fk_fp)
+```
+
+---
+
+## SDK Config Related
+
+### Set Auto Motion Mode Switching — `set_auto_set_motion_mode_enabled()`
+
+**Description:** Enable or disable automatic `set_motion_mode()` switching when calling `move_*` APIs at runtime.
+
+- `True`: keep auto-switching behavior (default).
+- `False`: do not auto switch; you need to call `set_motion_mode()` manually when needed.
+
+**Function Definition:**
+
+```python
+set_auto_set_motion_mode_enabled(self, enabled: bool) -> None
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `enabled` | `bool` | Whether to enable automatic motion-mode switching |
+
+**Usage Example:**
+
+```python
+robot.set_auto_set_motion_mode_enabled(False)
+robot.set_motion_mode(robot.OPTIONS.MOTION_MODE.J)
+robot.move_j([0.0] * robot.joint_nums)
+```
+
+---
+
+### Set Joint Limits Enabled — `set_joint_limits_enabled()`
+
+**Description:** Enable or disable software joint limits at runtime.
+
+- `True`: joint commands are clamped by configured `joint_limits` / model limits.
+- `False`: skip model `joint_limits` clamp and only keep basic numeric range protection.
+
+**Function Definition:**
+
+```python
+set_joint_limits_enabled(self, enabled: bool) -> None
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `enabled` | `bool` | Whether to enable software joint limits |
+
+**Usage Example:**
+
+```python
+robot.set_joint_limits_enabled(False)
+robot.move_j([0.0] * robot.joint_nums)
+robot.set_joint_limits_enabled(True)
+```
+
+---
+
 ## Leader-Follower Arm
+
+**Controller behavior:** On the arm side, **all control and configuration commands** — including motion commands (`move_*`), mode switching (e.g. `set_normal_mode()` / `set_leader_mode()` / `set_follower_mode()`), speed/motion settings, and other parameter-setting APIs — **do not take effect while the arm is disabled**. The SDK may still send frames, but the controller will not apply them until the arm is **enabled** (use `enable()`).
+
+**`set_normal_mode()` and CAN push:** This call is used to return to normal single-arm control and **to enable CAN feedback push** on the controller. That behavior **only applies when the arm is enabled**. If the arm is disabled, `set_normal_mode()` will **not** successfully open or sustain CAN push on the hardware.
+
+> In **leader** or **follower** mode, `disable()` cannot be effectively executed (the controller may ignore it). To power off/disable the arm, first switch back to **normal mode** (e.g. `set_normal_mode()`), then call `disable()`.
 
 ### Set Normal Mode — `set_normal_mode()`
 
-**Description:** Set the robotic arm to normal control mode (single-arm mode). Commonly used to switch back from leader-follower/linked mode to normal mode; also enables CAN push.
+**Description:** Set the robotic arm to normal control mode (single-arm mode). Commonly used to switch back from leader-follower/linked mode to normal mode; when the arm is **enabled**, this also enables CAN feedback push (see the section note above).
 
 **Function Definition:**
 
@@ -783,13 +1129,15 @@ set_normal_mode(self) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
-robot.set_normal_mode()
+while not robot.enable():
+    robot.set_normal_mode()
+    time.sleep(0.01)
 ```
 
 ---
@@ -809,9 +1157,9 @@ set_leader_mode(self) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -833,9 +1181,9 @@ set_follower_mode(self) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -862,9 +1210,9 @@ get_leader_joint_angles(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -881,6 +1229,8 @@ while True:
 ---
 
 ## Motion Control
+
+**Prerequisite:** **control and setting commands only take effect after the arm is enabled.** If the arm is disabled, motion and configuration APIs will not work on the controller side — call `enable()` first (often together with `set_normal_mode()` when switching back from leader/follower usage).
 
 ### Enable — `enable()`
 
@@ -904,9 +1254,9 @@ enable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7, 255] = 255) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -919,6 +1269,8 @@ while not robot.enable():
 ### Disable — `disable()`
 
 **Description:** Power off and disable the robotic arm.
+
+> In **leader** or **follower** mode, `disable()` may be ignored and cannot reliably disable the arm. Switch back to **normal mode** first (see `set_normal_mode()`), then call `disable()`.
 
 > **Warning:** When this command is executed, if the robotic arm joints are in a raised position, they will **drop immediately**. Make sure the robotic arm is in a safe state before using this.
 
@@ -940,9 +1292,9 @@ disable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7, 255] = 255) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -952,9 +1304,37 @@ while not robot.disable():
 
 ---
 
+### Electronic Emergency Stop — `electronic_emergency_stop()`
+
+**Description:** Set the robotic arm to emergency stop state. If the arm joints are in a raised position when executed, the arm will **slowly descend with constant damping** (it will not drop immediately). After emergency stop, you can use reset() to reset the arm.
+
+> This command is effective when the arm is **enabled**. (If the arm is disabled, the controller may not apply it.)
+
+**Function Definition:**
+
+```python
+electronic_emergency_stop(self) -> None
+```
+
+**Usage Example:**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+robot.electronic_emergency_stop()
+```
+
+---
+
 ### Reset — `reset()`
 
 **Description:** Reset the robotic arm mode and immediately power off the arm.
+
+> `reset()` only takes effect **after** you have called `electronic_emergency_stop()` (emergency-stop state) and while the arm is **enabled**. Calling `reset()` before an emergency stop may be ignored.
 
 > **Warning:** When this command is executed, if the robotic arm joints are in a raised position, they will **drop immediately**. Make sure the robotic arm is in a safe state before using this.
 
@@ -967,37 +1347,13 @@ reset(self) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 robot.reset()
-```
-
----
-
-### Electronic Emergency Stop — `electronic_emergency_stop()`
-
-**Description:** Set the robotic arm to emergency stop state. If the arm joints are in a raised position when executed, the arm will **slowly descend with constant damping** (it will not drop immediately).
-
-**Function Definition:**
-
-```python
-electronic_emergency_stop(self) -> None
-```
-
-**Usage Example:**
-
-```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
-
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
-robot = AgxArmFactory.create_arm(cfg)
-robot.connect()
-
-robot.electronic_emergency_stop()
 ```
 
 ---
@@ -1024,9 +1380,9 @@ move_j(self, joints: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1034,7 +1390,7 @@ while not robot.enable():
     time.sleep(0.01)
 
 robot.set_speed_percent(100)
-robot.move_j([0.0, 0.1, 0.1, 0.0, 0.1, 0.0, 0.0])
+robot.move_j([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 
 # Wait for motion to finish (with 5s timeout)
 time.sleep(0.5)
@@ -1079,9 +1435,9 @@ move_js(self, joints: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1115,9 +1471,9 @@ move_p(self, pose: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1125,7 +1481,7 @@ while not robot.enable():
     time.sleep(0.01)
 
 robot.set_speed_percent(100)
-robot.move_p([-0.4, -0.0, 0.4, 1.5708, 0.0, 0.0])
+robot.move_p([-0.45, -0.0, 0.45, -1.5708, 0.0, -3.14159])
 
 # Wait for motion to finish (with 5s timeout)
 time.sleep(0.5)
@@ -1165,9 +1521,9 @@ move_l(self, pose: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1175,7 +1531,7 @@ while not robot.enable():
     time.sleep(0.01)
 
 robot.set_speed_percent(100)
-robot.move_l([-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0])
+robot.move_l([-0.45, -0.2, 0.45, -1.5708, 0.0, -3.14159])
 
 # Wait for motion to finish (with 5s timeout)
 time.sleep(0.5)
@@ -1215,9 +1571,9 @@ move_c(self, start_pose: list[float], mid_pose: list[float], end_pose: list[floa
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1225,9 +1581,9 @@ while not robot.enable():
     time.sleep(0.01)
 
 robot.set_speed_percent(100)
-sp = [-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0]
-mp = [-0.4, 0.0, 0.45, 1.5708, 0.0, 0.0]
-ep = [-0.4, 0.2, 0.4, 1.5708, 0.0, 0.0]
+sp = [-0.45, -0.2, 0.45, -1.5708, 0.0, -3.14159]
+mp = [-0.45, 0.0, 0.5, -1.5708, 0.0, -3.14159]
+ep = [-0.45, 0.2, 0.45, -1.5708, 0.0, -3.14159]
 robot.move_c(sp, mp, ep)
 
 # Wait for motion to finish (with 5s timeout)
@@ -1289,17 +1645,27 @@ move_mit(
 | `v_des` | `float` | `[-45.0, 45.0]` | rad/s | `0.0` | 2.198e-2 |
 | `kp` | `float` | `[0.0, 500.0]` | — | `10.0` | 1.221e-1 |
 | `kd` | `float` | `[-5.0, 5.0]` | — | `0.8` | 2.442e-3 |
-| `t_ff` | `float` | `[-8.0, 8.0]` | N·m | `0.0` | 6.275e-2 |
+
+**`t_ff` parameter differs by firmware version:**
+
+| Version | Joint | `t_ff` Range (N·m) | Encoding Bits | Precision (N·m) |
+| --- | --- | --- | --- | --- |
+| `default`（≤ v110） | 1-2 | `[-24.0, 24.0]` | 8 | 1.882e-1 |
+| `default`（≤ v110） | 4-6 | `[-18.0, 18.0]` | 8 | 1.412e-1 |
+| `default`（≤ v110） | 5-7 | `[-8.0, 8.0]` | 8 | 6.275e-2 |
+| `v111`（≥ v111） | 1-7 | `[-16.0, 16.0]` | 12 | 7.813e-3 |
 
 > **Note:** Consecutive execution of this command will overwrite the previous target value.
+>
+> The correct firmware version must be set via `create_agx_arm_config(firmeware_version=...)`. See [Firmware Version](#firmware-version) for details.
 
 **Usage Example:**
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1327,10 +1693,12 @@ for i in range(1, robot.joint_nums + 1):
 
 - [切换到 English](#nero-api-documentation)
 - [导入模块](#导入模块)
+- [固件版本选择](#固件版本选择)
 - [创建实例并连接](#创建实例并连接)
   - [创建配置参数 — create_agx_arm_config()](#创建配置参数--create_agx_arm_config)
-  - [创建机械臂 Driver 实例 — AgxArmFactory.create_arm()](#创建机械臂-driver-实例--agxarmfaborycreate_arm)
+  - [创建机械臂 Driver 实例 — AgxArmFactory.create_arm()](#创建机械臂-driver-实例--agxarmfactorycreate_arm)
   - [创建连接 — connect()](#创建连接--connect)
+  - [断开连接 — disconnect()](#断开连接--disconnect)
   - [初始化末端执行器 — init_effector()](#初始化末端执行器--init_effector)
 - [通用状态](#通用状态)
   - [获取关节数量 — joint_nums](#获取关节数量--joint_nums)
@@ -1343,6 +1711,7 @@ for i in range(1, robot.joint_nums + 1):
   - [读取驱动器状态 — get_driver_states()](#读取驱动器状态--get_driver_states)
   - [读取关节使能状态 — get_joint_enable_status()](#读取关节使能状态--get_joint_enable_status)
   - [读取全部关节使能状态 — get_joints_enable_status_list()](#读取全部关节使能状态--get_joints_enable_status_list)
+  - [读取固件信息 — get_firmware()](#读取固件信息--get_firmware)
 - [参数设定](#参数设定)
   - [设定运行速度 — set_speed_percent()](#设定运行速度--set_speed_percent)
   - [设定运动模式 — set_motion_mode()](#设定运动模式--set_motion_mode)
@@ -1351,6 +1720,11 @@ for i in range(1, robot.joint_nums + 1):
   - [获取 TCP 位姿 — get_tcp_pose()](#获取-tcp-位姿--get_tcp_pose)
   - [法兰位姿转 TCP 位姿 — get_flange2tcp_pose()](#法兰位姿转-tcp-位姿--get_flange2tcp_pose)
   - [TCP 位姿转法兰位姿 — get_tcp2flange_pose()](#tcp-位姿转法兰位姿--get_tcp2flange_pose)
+- [运动学相关](#运动学相关)
+  - [正运动学 — fk()](#正运动学--fk)
+- [SDK 配置相关](#sdk-配置相关)
+  - [设置自动切换运动模式开关 — set_auto_set_motion_mode_enabled()](#设置自动切换运动模式开关--set_auto_set_motion_mode_enabled)
+  - [设置关节软件限位开关 — set_joint_limits_enabled()](#设置关节软件限位开关--set_joint_limits_enabled)
 - [Leader-Follower 臂](#leader-follower-臂)
   - [设定正常模式 — set_normal_mode()](#设定正常模式--set_normal_mode)
   - [设定主导臂（Leader）模式 — set_leader_mode()](#设定主导臂leader模式--set_leader_mode)
@@ -1359,8 +1733,8 @@ for i in range(1, robot.joint_nums + 1):
 - [运动控制](#运动控制)
   - [使能 — enable()](#使能--enable)
   - [失能 — disable()](#失能--disable)
-  - [重置 — reset()](#重置--reset)
   - [电子急停 — electronic_emergency_stop()](#电子急停--electronic_emergency_stop)
+  - [重置 — reset()](#重置--reset)
   - [关节运动 — move_j()](#关节运动--move_j)
   - [关节运动 (Follower 模式) — move_js()](#关节运动-follower-模式--move_js)
   - [点到点运动 — move_p()](#点到点运动--move_p)
@@ -1373,7 +1747,48 @@ for i in range(1, robot.joint_nums + 1):
 ## 导入模块
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+```
+
+---
+
+## 固件版本选择
+
+Nero 系列的固件版本体系与 Piper 系列相互独立。SDK 通过 `create_agx_arm_config()` 的 `firmeware_version` 参数选择匹配的驱动，这里的固件版本采用的是软件的版本号，例如 `"1.10"`。
+
+### 版本列表
+
+| SDK 版本 | 常量 | 固件范围 | 主要差异 |
+| --- | --- | --- | --- |
+| `"default"` | `NeroFW.DEFAULT` | ≤ 1.10 | MIT 力矩：关节 1-2 输入范围 ±24 N·m，关节 3-4 范围 ±18 N·m，关节 5-7 范围 ±8 N·m；8-bit 编码 |
+| `"v111"` | `NeroFW.V111` | ≥ 1.11 | MIT 力矩：全关节范围 ±16 N·m；12-bit 编码；去除 CRC 校验位；motion mode 编码变更 |
+
+### 如何选择
+
+查看机械臂主控上的固件版本号，可通过[get_firmware()](#读取固件信息--get_firmware)方法获取（格式：**X.XX**），根据下表选择对应的 SDK 版本：
+
+| 您的固件版本 | 应填写的 `firmeware_version` | 常量 |
+| --- | --- | --- |
+| 1.10 及更早 | `"default"`（或不填，默认值） | `NeroFW.DEFAULT` |
+| 1.11 及更新 | `"v111"` | `NeroFW.V111` |
+
+> **⚠️ 安全警告：** 选错固件版本可能导致 SDK 发送编码错误的力矩指令。特别是将 v111 协议数据发送给旧固件机械臂，可能造成 **危险的非预期运动**。使用前请务必确认您的固件版本。
+
+**使用示例（推荐 — 使用常量类获得 IDE 自动补全）：**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+
+# 固件为 1.10，选择 NeroFW.DEFAULT
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+```
+
+也兼容原始字符串写法：
+
+```python
+cfg = create_agx_arm_config(robot="nero", firmeware_version="default", channel="can0")
 ```
 
 ---
@@ -1399,39 +1814,35 @@ create_agx_arm_config(
 
 | 名称 | 类型 | 说明 |
 | --- | --- | --- |
-| `robot` | `str` | 机械臂型号，可选值：`"nero"` / `"piper"` / `"piper_h"` / `"piper_l"` / `"piper_x"` |
+| `robot` | `str` | 机械臂型号。推荐使用 `ArmModel` 常量：`ArmModel.NERO` / `ArmModel.PIPER` / `ArmModel.PIPER_H` / `ArmModel.PIPER_L` / `ArmModel.PIPER_X`（也兼容原始字符串） |
 | `comm` | `str` | 通讯类型，可选值：`"can"`（默认）。注意：`comm` 不是 CAN 通道名，CAN 通道由 `channel` 指定 |
-| `firmeware_version` | `str` | 主控固件版本，默认 `"default"` |
+| `firmeware_version` | `str` | 主控固件版本。推荐使用按机型分类的常量：Nero 系列 → `NeroFW.DEFAULT` / `NeroFW.V111`。选择方法见[固件版本选择](#固件版本选择)。默认 `"default"` |
 
 **可选关键字参数（`**kwargs`）：**
 
 | 名称 | 类型 | 说明 |
 | --- | --- | --- |
 | `joint_limits` | `dict` | 自定义关节限位（单位：rad）。默认自动赋值，暂不会将手动输入的限位生效到实际控制中。示例见下文 |
-| `channel` | `str` | CAN 通道名，默认 `"can0"` |
-| `interface` | `str` | CAN 接口类型，默认 `"socketcan"`。Linux 下官方 CAN 模块必须为 `"socketcan"`；macOS 需换用串口 CAN 模块并设为 `"slcan"` |
+| `auto_set_motion_mode` | `bool` | 是否在发送运动类 API 前由 SDK 自动切换到所需运动模式。默认 `True`。如果你希望在自己的上层逻辑中显式控制模式切换，可设为 `False`。 |
+| `enable_joint_limits` | `bool` | 是否在运行时运动接口中启用关节软件限位夹紧。默认 `True`。设为 `False` 时跳过机型 `joint_limits` 夹紧（仍保留基础数值范围检查）。 |
+| `channel` | `str` | CAN 通道标识，默认 `"can0"`。当前文档已验证的写法为：`"agx_cando"` 使用 `"0"`、`"1"`、`"2"` 这类设备索引字符串；`"socketcan"` 使用 Linux 下的 CAN 网卡名，例如 `"can0"` 或重命名后的接口名；`"slcan"` 在 macOS（`Darwin`）下使用串口设备路径，例如 `"/dev/ttyACM0"`。 |
+| `interface` | `str` | CAN 接口类型，默认 `"socketcan"`。当前文档已验证并提供说明的取值为 Linux 下的 `"socketcan"`、Windows 下 Agilex CANDO 后端使用的 `"agx_cando"`、以及 macOS（`Darwin`）下的 `"slcan"`。 |
 | `bitrate` | `int` | CAN 波特率，默认 `1000000`（1 Mbps） |
-| `enable_check_can` | `bool` | 是否在创建 Comm 实例时检查 CAN 模块，默认 `True` |
+| `enable_check_can` | `bool` | 是否在创建 Comm 实例时检查 CAN 模块，默认 `True`。当前该预检查主要只对 Linux `socketcan` 生效；其他后端（如 Windows `agx_cando`、macOS `slcan`）通常会在实际打开 CAN bus 时完成可用性检查。 |
 | `auto_connect` | `bool` | 是否自动创建 CAN Bus 实例，默认 `True` |
-| `timeout` | `float` | CAN Bus 读写超时时间（秒），默认 `1.0` |
+| `timeout` | `float` | CAN Bus 读写超时时间（秒），默认 `0.001` |
+| `receive_own_messages` | `bool` | 是否让本地 CAN 后端接收由同一进程/设备发送出去的报文。默认 `False`。适合调试、回环测试或单节点联调，正常机械臂控制一般不建议开启。具体是否生效取决于所选 `interface`。macOS 下的 `slcan` 后端通常**不支持**该项；使用 `interface="slcan"` 时**不要**传入。 |
+| `local_loopback` | `bool` | 是否开启 CAN **本地回环**。默认 `False`（关闭回环），本地终端/进程将**无法**接收到自己发送的 CAN 报文。调试时可选择开启，但**不建议**在正常使用 SDK 时开启，因为可能会占用读取 bus 的资源并影响读取性能。macOS 下的 `slcan` 后端通常**不支持**该项；使用 `interface="slcan"` 时**不要**传入。 |
 
 **返回值：** `dict`
-
-返回结构示例：
 
 ```json
 {
     "robot": "nero",
-    "comm": {
-        "type": "can",
-        "can": {
-            "channel": "can0",
-            "interface": "socketcan",
-            "bitrate": 1000000,
-            "enable_check_can": true,
-            "auto_connect": true,
-            "timeout": 1.0
-        }
+    "firmeware_version": "default",
+    "log": {
+        "level": "INFO",
+        "path": ""
     },
     "joint_names": ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"],
     "joint_limits": {
@@ -1442,18 +1853,40 @@ create_agx_arm_config(
         "joint5": [-2.757621, 2.757621],
         "joint6": [-0.733039, 0.959932],
         "joint7": [-1.570797, 1.570797]
+    },
+    "comm": {
+        "type": "can",
+        "can": {
+            "channel": "can0",
+            "interface": "socketcan",
+            "bitrate": 1000000,
+            "enable_check_can": true,
+            "auto_connect": true,
+            "timeout": 0.001,
+            "receive_own_messages": false,
+            "local_loopback": false
+        }
     }
 }
 ```
 
-> **提示：** 关节运动限位单位为 **弧度（rad）**，夹爪运动限位单位为 **米（m）**。
+> **说明：** `auto_set_motion_mode` 只有在显式传入时，才会出现在返回配置的顶层字段中。
+
+已验证的接口与通道填写示例：
+
+- Linux `socketcan`：`create_agx_arm_config(..., interface="socketcan", channel="can0")`
+- Windows `agx_cando`：`create_agx_arm_config(..., interface="agx_cando", channel="0")`
+- macOS `slcan`：`create_agx_arm_config(..., interface="slcan", channel="/dev/ttyACM0")`
+
+在 Windows 上使用 `interface="agx_cando"` 前，需要先单独安装 `python-can-agx-cando` 插件。可先从 `https://github.com/agilexrobotics/python-can-agx-cando.git` 克隆仓库，再进入仓库目录执行 `pip3 install .` 完成安装。
+在 macOS（`Darwin`）下使用 `interface="slcan"` 且默认通道时，需要先给予串口权限。
 
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config
+from pyAgxArm import create_agx_arm_config, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 print(cfg)
 ```
 
@@ -1480,9 +1913,9 @@ create_arm(cls, config: dict, **kwargs) -> T
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 ```
 
@@ -1507,11 +1940,47 @@ connect(self, start_read_thread: bool = True) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
+```
+
+---
+
+### 断开连接 — `disconnect()`
+
+**功能说明：** 断开机械臂连接，并释放后台线程与 CAN 资源。
+
+该方法是 **幂等（idempotent）** 的：重复调用不会报错。通常用于“当前 `robot` 实例不再需要”的场景，例如读完固件版本后准备创建新的实例。
+
+> **注意：** 调用 `disconnect()` 后，底层通信句柄可能会被释放；此时调用 `robot.is_connected()` 会返回 `False`。
+
+**函数定义：**
+
+```python
+disconnect(self, join_timeout: float = 1.0) -> None
+```
+
+**参数说明：**
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `join_timeout` | `float` | 关闭时等待后台线程退出的超时时间（秒），默认 `1.0` |
+
+**使用示例：**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+print(robot.is_connected())
+
+robot.disconnect()
+print(robot.is_connected())
 ```
 
 ---
@@ -1539,9 +2008,9 @@ init_effector(self, effector: str) -> EffectorDriver
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1568,9 +2037,9 @@ joint_nums: int
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1620,21 +2089,85 @@ get_arm_status(self) -> MessageAbstract[ArmMsgFeedbackStatus] | None
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `ctrl_mode` | `int` | 控制模式（待机 / CAN / 示教 / 以太网 / WiFi / 离线轨迹等） |
-| `arm_status` | `int` | 机械臂状态（正常 / 急停 / 奇异 / 超限 / 碰撞等） |
-| `mode_feedback` | `int` | 模式反馈（MOVE P/J/L/C/MIT 等） |
-| `teach_status` | `int` | 示教状态（开始记录 / 结束记录 / 执行 / 暂停 / 继续 / 终止等） |
-| `motion_status` | `int` | 运动状态：`0` 已到达；`1` 未到达 |
+| `ctrl_mode` | `int` | 控制模式枚举（见下方含义） |
+| `arm_status` | `int` | 机械臂状态枚举（见下方含义） |
+| `mode_feedback` | `int` | 模式反馈枚举（见下方含义） |
+| `teach_status` | `int` | 示教状态枚举（见下方含义） |
+| `motion_status` | `int` | 运动状态枚举（见下方含义） |
 | `trajectory_num` | `int` | 轨迹点编号（离线轨迹模式下反馈） |
-| `err_status` | `object` | 错误状态位（关节角度超限 / 关节通信异常等） |
+| `err_status` | `object` | 故障状态位域（已转换为布尔标志，见下方含义） |
+
+**枚举含义（`ArmMsgFeedbackStatus.msg`）：**
+
+`ctrl_mode`（控制模式）：
+- `0x00` 待机模式
+- `0x01` CAN 指令控制
+- `0x02` 示教模式
+- `0x03` 以太网控制模式
+- `0x04` Wi-Fi 控制模式
+- `0x05` 遥控器控制模式
+- `0x06` 联动示教输入模式
+- `0x07` 离线轨迹模式
+- `0x08` TCP 控制模式
+- `0xFF` 未知
+
+`arm_status`（机械臂状态）：
+- `0x00` 正常
+- `0x01` 急停
+- `0x02` 无解
+- `0x03` 奇异点
+- `0x04` 目标角度超过限
+- `0x05` 关节通信异常
+- `0x06` 关节抱闸未打开
+- `0x07` 发生碰撞
+- `0x08` 拖动示教时超速
+- `0x09` 关节状态异常
+- `0x0A` 其它异常
+- `0x0B` 示教记录
+- `0x0C` 示教执行
+- `0x0D` 示教暂停
+- `0x0E` 主控 NTC 过温
+- `0x0F` 释放电阻 NTC 过温
+- `0xFF` 未知
+
+`mode_feedback`（模式反馈）：
+- `0x00` MOVE P
+- `0x01` MOVE J
+- `0x02` MOVE L
+- `0x03` MOVE C
+- `0x04` MOVE MIT（Nero固件 < 1.11；使用 `NeroFW.DEFAULT`）
+- `0x05` MOVE_CPV
+- `0x06` MOVE MIT（Nero固件 >= 1.11；使用 `NeroFW.V111`）
+- `0xFF` 未知
+
+`teach_status`（示教状态）：
+- `0x00` 关闭
+- `0x01` 开始示教记录（进入拖动示教模式）
+- `0x02` 结束示教记录（退出拖动示教模式）
+- `0x03` 执行示教轨迹（拖动示教轨迹复现）
+- `0x04` 暂停执行
+- `0x05` 继续执行（轨迹复现继续）
+- `0x06` 终止执行
+- `0x07` 运动到轨迹起点
+- `0xFF` 未知
+
+`motion_status`（运动状态）：
+- `0x00` 到达指定点位
+- `0x01` 未到达指定点位
+- `0xFF` 未知
+
+`err_status`（16-bit 故障码 -> 布尔标志，Nero 7 轴）：
+- `msg.err_code`: 原始 16-bit 故障码整数（0~65535）。
+- `msg.err_status.joint_i_angle_limit`（`i=1..7`）：`True` 表示关节 i 角度超限。
+- `msg.err_status.communication_status_joint_i`（`i=1..7`）：`True` 表示关节 i 通信异常。
 
 **使用示例：**
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1666,9 +2199,9 @@ get_joint_angles(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1705,9 +2238,9 @@ get_flange_pose(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1751,9 +2284,9 @@ get_motor_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7]) -> MessageAbst
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1796,9 +2329,9 @@ get_driver_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7]) -> MessageAbs
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1832,9 +2365,9 @@ get_joint_enable_status(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7, 255]) ->
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1859,13 +2392,54 @@ get_joints_enable_status_list(self) -> list[bool]
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 print(robot.get_joints_enable_status_list())
+```
+
+---
+
+### 读取固件信息 — `get_firmware()`
+
+**功能说明：** 读取机械臂固件信息（软件版本）。该接口会下发查询帧并等待对应反馈。
+
+**函数定义：**
+
+```python
+get_firmware(self, timeout: float = 1.0, min_interval: float = 1.0) -> dict | None
+```
+
+**参数说明：**
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `timeout` | `float` | 等待反馈超时时间（秒），默认 `1.0`；`0.0` 表示非阻塞 |
+| `min_interval` | `float` | 最小请求间隔（秒），默认 `1.0` |
+
+**返回值：** `dict | None`
+
+常见字段：
+
+| Key | 类型 | 说明 |
+| --- | --- | --- |
+| `software_version` | `str` | 软件版本（例如 `1.10`） |
+
+**使用示例：**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+fw = robot.get_firmware()
+if fw is not None:
+    print(fw)
 ```
 
 ---
@@ -1891,9 +2465,9 @@ set_speed_percent(self, percent: int = 100) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1928,9 +2502,9 @@ set_motion_mode(self, motion_mode: Literal["p", "j", "l", "c", "mit", "js"] = "p
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1962,9 +2536,9 @@ set_tcp_offset(self, pose: list[float]) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -1991,9 +2565,9 @@ get_tcp_pose(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2030,16 +2604,16 @@ get_flange2tcp_pose(self, flange_pose: list[float]) -> list[float]
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 robot.set_tcp_offset([0.0, 0.0, 0.10, 0.0, 0.0, 0.0])
 
 # 直接指定法兰位姿
-tcp_pose = robot.get_flange2tcp_pose([-0.16, -0.043, 0.69, 1.118, 0.9272, 0.1482])
+tcp_pose = robot.get_flange2tcp_pose([-0.45, -0.0, 0.45, -1.5708, 0.0, -3.14159])
 print("tcp_pose =", tcp_pose)
 
 # 从当前位姿获取，结果与 get_tcp_pose() 得到的 pose 相同
@@ -2072,15 +2646,15 @@ get_tcp2flange_pose(self, tcp_pose: list[float]) -> list[float]
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 robot.set_tcp_offset([0.0, 0.0, 0.10, 0.0, 0.0, 0.0])
 
-target_tcp_pose = [-0.16, -0.043, 0.69, 1.118, 0.9272, 0.1482]
+target_tcp_pose = [-0.45, -0.0, 0.45, -1.5708, 0.0, -3.14159]
 target_flange_pose = robot.get_tcp2flange_pose(target_tcp_pose)
 print("target_flange_pose =", target_flange_pose)
 
@@ -2089,11 +2663,147 @@ print("target_flange_pose =", target_flange_pose)
 
 ---
 
+## 运动学相关
+
+### 正运动学 — `fk()`
+
+**功能说明：** 根据给定关节角度，使用机械臂内置的改进 DH（MDH）模型计算末端**法兰位姿**。
+
+该接口为**离线计算**（不依赖 CAN 通信）。输出位姿格式与 [get_flange_pose()](#读取法兰位姿--get_flange_pose) 返回的 `.msg` 一致：  
+`[x, y, z, roll, pitch, yaw]`（基坐标系），其中 `x/y/z` 单位为米，`roll/pitch/yaw` 单位为弧度（SDK 采用 ZYX 的 RPY 约定）。
+
+> **注意：** Nero 为 7 轴，`fk()` 输入的关节角列表长度为 7。
+
+**函数定义：**
+
+```python
+fk(self, joint_angles: list[float]) -> list[float]
+```
+
+**参数说明：**
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `joint_angles` | `list[float]` | 关节角度（单位：rad），长度 7：`[j1, j2, j3, j4, j5, j6, j7]` |
+
+**返回值：** `list[float]`
+
+`[x, y, z, roll, pitch, yaw]` — 法兰位姿（基坐标系）。
+
+**使用示例：**
+
+1）与 [get_joint_angles()](#读取关节角度--get_joint_angles) 组合（读取当前关节角 → FK）：
+
+```python
+ja = robot.get_joint_angles()
+if ja is not None:
+    flange_pose = robot.fk(ja.msg)
+    print("fk 法兰:", flange_pose)
+```
+
+2）与 [get_leader_joint_angles()](#读取主导臂leader关节角度--get_leader_joint_angles) 组合（读取主导臂角度 → FK）：
+
+```python
+mja = robot.get_leader_joint_angles()
+if mja is not None:
+    leader_flange_pose = robot.fk(mja.msg)
+    print("leader fk 法兰:", leader_flange_pose)
+```
+
+3）与 [get_flange2tcp_pose()](#法兰位姿转-tcp-位姿--get_flange2tcp_pose) 组合（FK 法兰 → 推导 TCP）：
+
+```python
+ja = robot.get_joint_angles()
+if ja is not None:
+    flange_pose = robot.fk(ja.msg)
+    tcp_pose = robot.get_flange2tcp_pose(flange_pose)
+    print("fk TCP:", tcp_pose)
+```
+
+4）对比“测得法兰位姿”与“FK 计算位姿”（快速一致性检查）：
+
+```python
+ja = robot.get_joint_angles()
+fp = robot.get_flange_pose()
+if ja is not None and fp is not None:
+    fk_fp = robot.fk(ja.msg)
+    print("测得法兰:", fp.msg)
+    print("fk 法兰:", fk_fp)
+```
+
+---
+
+## SDK 配置相关
+
+### 设置自动切换运动模式开关 — `set_auto_set_motion_mode_enabled()`
+
+**功能说明：** 运行时设置在调用 `move_*` 接口时，是否自动执行 `set_motion_mode()` 切换。
+
+- `True`：保持自动切换（默认）。
+- `False`：不自动切换，需要你按需手动调用 `set_motion_mode()`。
+
+**函数定义：**
+
+```python
+set_auto_set_motion_mode_enabled(self, enabled: bool) -> None
+```
+
+**参数说明：**
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `enabled` | `bool` | 是否启用自动切换运动模式 |
+
+**使用示例：**
+
+```python
+robot.set_auto_set_motion_mode_enabled(False)
+robot.set_motion_mode(robot.OPTIONS.MOTION_MODE.J)
+robot.move_j([0.0] * robot.joint_nums)
+```
+
+---
+
+### 设置关节软件限位开关 — `set_joint_limits_enabled()`
+
+**功能说明：** 运行时设置是否启用关节软件限位。
+
+- `True`：按配置的 `joint_limits` / 机型限位进行夹紧保护。
+- `False`：跳过机型 `joint_limits` 夹紧，仅保留基础数值范围保护。
+
+**函数定义：**
+
+```python
+set_joint_limits_enabled(self, enabled: bool) -> None
+```
+
+**参数说明：**
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `enabled` | `bool` | 是否启用关节软件限位 |
+
+**使用示例：**
+
+```python
+robot.set_joint_limits_enabled(False)
+robot.move_j([0.0] * robot.joint_nums)
+robot.set_joint_limits_enabled(True)
+```
+
+---
+
 ## Leader-Follower 臂
+
+**主控侧行为说明：** 机械臂处于 **失能** 状态时，**所有控制类与参数设置类指令**（包括各类运动指令 `move_*`、模式切换如 `set_normal_mode()` / `set_leader_mode()` / `set_follower_mode()`、速度/运动模式等设定、以及其它 `set_*` 配置接口）在 **控制器上均不会生效**。SDK 侧仍可能下发报文，但主控只有在 **使能** 后才会真正执行。
+
+**`set_normal_mode()` 与 CAN 推送：** 该接口用于切回普通单臂控制，并在 **使能状态下** 由主控 **打开 CAN 状态反馈推送**。若机械臂 **未使能**，则 **无法** 在主控侧成功打开或维持 CAN 推送。
+
+> 在 **主臂（leader）** 或 **从臂（follower）** 模式下，`disable()` 可能无法有效执行（控制器可能会忽略该指令）。若需要给机械臂“失能/断电”，请先切回 **正常模式**（例如 `set_normal_mode()`），再调用 `disable()`。
 
 ### 设定正常模式 — `set_normal_mode()`
 
-**功能说明：** 将机械臂设置为正常控制模式（单臂模式）。常用于从 Leader-Follower/联动模式切回普通模式，同时会开启 CAN 推送。
+**功能说明：** 将机械臂设置为正常控制模式（单臂模式）。常用于从 Leader-Follower/联动模式切回普通模式；在机械臂 **已使能** 的前提下，会配合主控打开 CAN 反馈推送（详见本节开头的说明）。
 
 **函数定义：**
 
@@ -2104,13 +2814,15 @@ set_normal_mode(self) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
-robot.set_normal_mode()
+while not robot.enable():
+    robot.set_normal_mode()
+    time.sleep(0.01)
 ```
 
 ---
@@ -2130,9 +2842,9 @@ set_leader_mode(self) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2154,9 +2866,9 @@ set_follower_mode(self) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2183,9 +2895,9 @@ get_leader_joint_angles(self) -> MessageAbstract[list[float]] | None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2202,6 +2914,8 @@ while True:
 ---
 
 ## 运动控制
+
+**前置条件：** **控制指令与参数设置指令只有在机械臂使能后才会在主控侧生效。** 失能时运动与配置类 API 无效，请先调用 `enable()`；从联动/示教等场景切回单臂时，常与 `set_normal_mode()` 配合使用。
 
 ### 使能 — `enable()`
 
@@ -2225,9 +2939,9 @@ enable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7, 255] = 255) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2240,6 +2954,8 @@ while not robot.enable():
 ### 失能 — `disable()`
 
 **功能说明：** 将机械臂失电。
+
+> 在 **主臂/从臂模式** 下，`disable()` 可能会被忽略，无法可靠完成失能。建议先切回 **正常模式**（见 `set_normal_mode()`），再调用 `disable()`。
 
 > **⚠️ 安全警告：** 执行该指令时，如果机械臂关节处于抬起状态，会 **立刻掉落**。请确保机械臂处于安全状态后再使用。
 
@@ -2261,9 +2977,9 @@ disable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7, 255] = 255) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2273,9 +2989,37 @@ while not robot.disable():
 
 ---
 
+### 电子急停 — `electronic_emergency_stop()`
+
+**功能说明：** 将机械臂设置为急停状态。如果执行时机械臂关节处于抬起状态，机械臂会 **缓慢以恒定阻尼落下**（不会立刻掉落），急停后可使用 `reset()` 进行重置。
+
+> 该指令在机械臂 **已使能** 状态下有效。（若机械臂处于失能状态，控制器可能不会应用该指令。）
+
+**函数定义：**
+
+```python
+electronic_emergency_stop(self) -> None
+```
+
+**使用示例：**
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
+
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+robot.electronic_emergency_stop()
+```
+
+---
+
 ### 重置 — `reset()`
 
 **功能说明：** 将机械臂模式重置并令机械臂立刻失电。
+
+> `reset()` 仅在你先调用过 `electronic_emergency_stop()`（急停状态）之后才会生效（且需要机械臂处于**使能**状态）。若在急停之前调用 `reset()`，可能会被忽略。
 
 > **⚠️ 安全警告：** 执行该指令时，如果机械臂关节处于抬起状态，会 **立刻掉落**。请确保机械臂处于安全状态后再使用。
 
@@ -2288,37 +3032,13 @@ reset(self) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 robot.reset()
-```
-
----
-
-### 电子急停 — `electronic_emergency_stop()`
-
-**功能说明：** 将机械臂设置为急停状态。如果执行时机械臂关节处于抬起状态，机械臂会 **缓慢以恒定阻尼落下**（不会立刻掉落）。
-
-**函数定义：**
-
-```python
-electronic_emergency_stop(self) -> None
-```
-
-**使用示例：**
-
-```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
-
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
-robot = AgxArmFactory.create_arm(cfg)
-robot.connect()
-
-robot.electronic_emergency_stop()
 ```
 
 ---
@@ -2345,9 +3065,9 @@ move_j(self, joints: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2355,7 +3075,7 @@ while not robot.enable():
     time.sleep(0.01)
 
 robot.set_speed_percent(100)
-robot.move_j([0.0, 0.1, 0.1, 0.0, 0.1, 0.0, 0.0])
+robot.move_j([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 
 # 等待运动结束（带 5s 超时）
 time.sleep(0.5)
@@ -2400,9 +3120,9 @@ move_js(self, joints: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2436,9 +3156,9 @@ move_p(self, pose: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2446,7 +3166,7 @@ while not robot.enable():
     time.sleep(0.01)
 
 robot.set_speed_percent(100)
-robot.move_p([-0.4, -0.0, 0.4, 1.5708, 0.0, 0.0])
+robot.move_p([-0.45, -0.0, 0.45, -1.5708, 0.0, -3.14159])
 
 # 等待运动结束（带 5s 超时）
 time.sleep(0.5)
@@ -2486,9 +3206,9 @@ move_l(self, pose: list[float]) -> None
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2496,7 +3216,7 @@ while not robot.enable():
     time.sleep(0.01)
 
 robot.set_speed_percent(100)
-robot.move_l([-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0])
+robot.move_l([-0.45, -0.2, 0.45, -1.5708, 0.0, -3.14159])
 
 # 等待运动结束（带 5s 超时）
 time.sleep(0.5)
@@ -2536,9 +3256,9 @@ move_c(self, start_pose: list[float], mid_pose: list[float], end_pose: list[floa
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -2546,9 +3266,9 @@ while not robot.enable():
     time.sleep(0.01)
 
 robot.set_speed_percent(100)
-sp = [-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0]
-mp = [-0.4, 0.0, 0.45, 1.5708, 0.0, 0.0]
-ep = [-0.4, 0.2, 0.4, 1.5708, 0.0, 0.0]
+sp = [-0.45, -0.2, 0.45, -1.5708, 0.0, -3.14159]
+mp = [-0.45, 0.0, 0.5, -1.5708, 0.0, -3.14159]
+ep = [-0.45, 0.2, 0.45, -1.5708, 0.0, -3.14159]
 robot.move_c(sp, mp, ep)
 
 # 等待运动结束（带 5s 超时）
@@ -2610,17 +3330,27 @@ move_mit(
 | `v_des` | `float` | `[-45.0, 45.0]` | rad/s | `0.0` | 2.198e-2 |
 | `kp` | `float` | `[0.0, 500.0]` | — | `10.0` | 1.221e-1 |
 | `kd` | `float` | `[-5.0, 5.0]` | — | `0.8` | 2.442e-3 |
-| `t_ff` | `float` | `[-8.0, 8.0]` | N·m | `0.0` | 6.275e-2 |
+
+**`t_ff` 参数因固件版本而异：**
+
+| 版本 | 关节 | `t_ff` 范围 (N·m) | 编码位数 | 精度 (N·m) |
+| --- | --- | --- | --- | --- |
+| `default`（≤ v110） | 1-2 | `[-24.0, 24.0]` | 8 | 1.882e-1 |
+| `default`（≤ v110） | 4-6 | `[-18.0, 18.0]` | 8 | 1.412e-1 |
+| `default`（≤ v110） | 5-7 | `[-8.0, 8.0]` | 8 | 6.275e-2 |
+| `v111`（≥ v111） | 1-7 | `[-16.0, 16.0]` | 12 | 7.813e-3 |
 
 > **注意：** 连续执行该指令会覆盖上一次的目标值。
+>
+> 必须通过 `create_agx_arm_config(firmeware_version=...)` 正确设置固件版本。详见[固件版本选择](#固件版本选择)。
 
 **使用示例：**
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 

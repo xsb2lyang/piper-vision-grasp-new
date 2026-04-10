@@ -18,7 +18,7 @@ class ArmMsgJointConfig(AttributeBase):
         joint_index: 关节电机序号,[1, 7]
         set_motor_current_pos_as_zero: 设置当前位置为零点, 有效值-0xAE
         acc_param_config_is_effective_or_not: 加速度参数设置是否生效, 有效值-0xAE
-        max_joint_acc: 最大关节加速度,单位0.01rad/s^2(0x7FFF为设定无效数值),输入范围\[0, 500\]-->[0 rad/s^2, 5.0 rad/s^2]
+        max_joint_acc: 最大关节加速度,单位0.01rad/s^2(0x7FFF为设定无效数值),输入范围[0, 500]-->[0 rad/s^2, 5.0 rad/s^2]
         clear_joint_err: 清除关节错误代码, 有效值-0xAE
     
     位描述:
@@ -48,7 +48,7 @@ class ArmMsgJointConfig(AttributeBase):
             Value 7 applies to all joint motors.
         set_motor_current_pos_as_zero: Command to set the current position of the specified joint motor as zero, with a valid value of 0xAE.
         acc_param_config_is_effective_or_not: Indicates whether the acceleration parameter configuration is effective, with a valid value of 0xAE.
-        max_joint_acc: Maximum joint acceleration, unit: 0.01rad/s^2, 0x7FFF is defined as the invalid value.Range is \[0, 500\]-->[0 rad/s^2, 5.0 rad/s^2]
+        max_joint_acc: Maximum joint acceleration, unit: 0.01rad/s^2, 0x7FFF is defined as the invalid value.Range is [0, 500]-->[0 rad/s^2, 5.0 rad/s^2]
         clear_joint_err: Command to clear joint error codes, with a valid value of 0xAE.
 
     Bit Description:

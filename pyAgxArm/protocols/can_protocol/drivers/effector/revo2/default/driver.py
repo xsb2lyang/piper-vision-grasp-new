@@ -44,7 +44,18 @@ class Driver:
         if isinstance(msg, AttributeBase):
             data = self._parser.pack(msg)
             if data is not None:
-                self._ctx.get_comm().send(data)
+                comm = self._ctx.get_comm()
+                if comm is None:
+                    raise RuntimeError(
+                        "Robot is not connected (comm is None). "
+                        "Call `connect()` before sending effector commands."
+                    )
+                try:
+                    comm.send(data)
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Failed to send {type(msg).__name__} on channel '{comm.get_channel()}': {exc}"
+                    ) from exc
         else:
             raise TypeError("msg must be AttributeBase")
 

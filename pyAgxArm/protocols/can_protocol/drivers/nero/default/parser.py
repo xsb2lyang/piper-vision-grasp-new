@@ -13,6 +13,12 @@ from ....msgs.nero.default import (
     ArmMsgFeedbackJointStates7,
     ArmMsgJointCtrl7,
     ArmMsgJointMitCtrl7,
+    ArmMsgFeedbackHighSpd1,
+    ArmMsgFeedbackHighSpd2,
+    ArmMsgFeedbackHighSpd3,
+    ArmMsgFeedbackHighSpd4,
+    ArmMsgFeedbackHighSpd5,
+    ArmMsgFeedbackHighSpd6,
     ArmMsgFeedbackHighSpd7,
     ArmMsgFeedbackLowSpd7,
     ArmMsgFeedbackStatus,
@@ -24,6 +30,7 @@ from ....msgs.nero.default import (
     ArmMsgFeedbackLeaderJointStates5,
     ArmMsgFeedbackLeaderJointStates6,
     ArmMsgFeedbackLeaderJointStates7,
+    ArmMsgFeedbackFirmware,
 )
 from ...core.protocol_parser_abstract import DriverAPIOptions, DriverAPIProtoAdapter
 from ....msgs.core import StrStruct
@@ -82,6 +89,13 @@ class Codec(PiperCodec):
             setattr(m, f"joint_{index}", nc.from_bytes_to_float(d))
         return decoder
 
+    def decode_4AF_firmware_info(self, m: ArmMsgFeedbackFirmware, d: bytearray) -> None:
+        if len(d) != 8 or d == bytearray(
+            [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        ):
+            return
+        m.data_seg = d
+
     def encode_151_mode_ctrl(self, msg: ArmMsgModeCtrl):
         d = super().encode_151_mode_ctrl(msg)
         d[6] = nc.ConvertToList_8bit(msg.enable_can_push, False)[0]
@@ -127,12 +141,42 @@ class Parser(PiperParser):
         # Nero 精简协议：移除Nero不支持的接收映射
         for can_id in (0x155, 0x156, 0x157, 0x473,
                        0x476, 0x478, 0x47B, 0x47C,
-                       0x4AF,):
+                       ):
             rx.pop(can_id, None)
 
         # Nero 增量：第 7 轴相关 CAN-ID
         rx.update(
             {
+                0x251: (
+                    "motor_state_1",
+                    ArmMsgFeedbackHighSpd1,
+                    self._codec.decode_high_spd
+                ),
+                0x252: (
+                    "motor_state_2",
+                    ArmMsgFeedbackHighSpd2,
+                    self._codec.decode_high_spd
+                ),
+                0x253: (
+                    "motor_state_3",
+                    ArmMsgFeedbackHighSpd3,
+                    self._codec.decode_high_spd
+                ),
+                0x254: (
+                    "motor_state_4",
+                    ArmMsgFeedbackHighSpd4,
+                    self._codec.decode_high_spd
+                ),
+                0x255: (
+                    "motor_state_5",
+                    ArmMsgFeedbackHighSpd5,
+                    self._codec.decode_high_spd
+                ),
+                0x256: (
+                    "motor_state_6",
+                    ArmMsgFeedbackHighSpd6,
+                    self._codec.decode_high_spd
+                ),
                 0x257: (
                     "motor_state_7",
                     ArmMsgFeedbackHighSpd7,
@@ -148,12 +192,15 @@ class Parser(PiperParser):
                     ArmMsgFeedbackJointStates7,
                     self._codec.decode_2A9_joint_7
                 ),
-
-                # 覆盖具有差异的消息
                 0x2A1: (
                     "arm_status",
                     ArmMsgFeedbackStatus,
                     self._codec.decode_2A1_status
+                ),
+                0x4AF: (
+                    "firmware_info",
+                    ArmMsgFeedbackFirmware,
+                    self._codec.decode_4AF_firmware_info
                 ),
 
                 # Leader arm joint messages
@@ -202,7 +249,7 @@ class Parser(PiperParser):
         # Nero 精简协议：移除Nero不支持的发送映射
         remove_can_ids = {0x191, 0x472,
                           0x474, 0x475, 0x477,
-                          0x479, 0x47A, 0x4AF,}
+                          0x479, 0x47A}
         for msg_type, (can_id, _enc) in list(tx.items()):
             if can_id in remove_can_ids:
                 tx.pop(msg_type, None)

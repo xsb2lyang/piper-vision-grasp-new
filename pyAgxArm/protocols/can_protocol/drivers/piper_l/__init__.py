@@ -1,5 +1,9 @@
 from .default.driver import Driver as PiperLDriverDefault
+from .versions.v183.driver import Driver as PiperLDriverV183
+from .versions.v188.driver import Driver as PiperLDriverV188
 
 __all__ = [
-    'PiperLDriverDefault'
+    'PiperLDriverDefault',
+    'PiperLDriverV183',
+    'PiperLDriverV188',
 ]

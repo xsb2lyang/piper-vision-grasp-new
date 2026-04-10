@@ -18,14 +18,23 @@ class Codec:
     """Minimal codec for agx_gripper messages."""
 
     def decode_2A8_gripper(self, m: ArmMsgFeedbackGripper, d: bytearray) -> None:
-        m.width = nc.ConvertToNegative_32bit(nc.ConvertBytesToInt(d, 0, 4)) * 1e-6
+        m.value = nc.ConvertToNegative_32bit(nc.ConvertBytesToInt(d, 0, 4))
         m.force = nc.ConvertToNegative_16bit(nc.ConvertBytesToInt(d, 4, 6)) * 1e-3
         m.status_code = nc.ConvertToNegative_8bit(
             nc.ConvertBytesToInt(d, 6, 7), False
         )
+        mode = nc.ConvertToNegative_8bit(
+            nc.ConvertBytesToInt(d, 7, 8), False
+        )
+        if mode == 0x01:
+            m.mode = "angle"
+            m.value *= 1e-3
+        else:
+            m.mode = "width"
+            m.value *= 1e-6
 
     def decode_159_gripper_ctrl(self, m: ArmMsgGripperCtrl, d: bytearray) -> None:
-        m.width = nc.ConvertToNegative_32bit(nc.ConvertBytesToInt(d, 0, 4)) * 1e-6
+        m.value = nc.ConvertToNegative_32bit(nc.ConvertBytesToInt(d, 0, 4)) * 1e-6
         m.force = nc.ConvertToNegative_16bit(nc.ConvertBytesToInt(d, 4, 6)) * 1e-3
         m.status_code = nc.ConvertToNegative_8bit(
             nc.ConvertBytesToInt(d, 6, 7), False
@@ -57,7 +66,7 @@ class Codec:
 
     def encode_159_gripper_ctrl(self, msg: ArmMsgGripperCtrl) -> List[int]:
         return (
-            nc.ConvertToList_32bit(msg.width, True)
+            nc.ConvertToList_32bit(msg.value, True)
             + nc.ConvertToList_16bit(msg.force, False)
             + nc.ConvertToList_8bit(msg.status_code, False)
             + nc.ConvertToList_8bit(msg.set_zero, False)

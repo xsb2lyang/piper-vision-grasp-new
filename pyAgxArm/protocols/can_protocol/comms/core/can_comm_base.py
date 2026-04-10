@@ -1,6 +1,9 @@
-from .comm_abstract import CommAbstract
+from typing import Any, Optional
+
 from can.message import Message
-from typing import Optional
+
+from .comm_abstract import CommAbstract
+
 
 class CanCommBase(CommAbstract):
     def __init__(self):
@@ -10,32 +13,32 @@ class CanCommBase(CommAbstract):
         self._channel = ""
         self._is_connected = False
         self._is_stopped = False
-    
+
     def connect(self, **kwargs) -> bool:
         raise NotImplementedError
 
     def is_connected(self) -> bool:
         return self._is_connected
 
-    def close(self) -> None:
+    def close(self) -> Any:
         raise NotImplementedError
 
     def is_stopped(self) -> bool:
         return self._is_stopped
-    
-    def get_status(self) -> None:
+
+    def get_status(self) -> Any:
         raise NotImplementedError
 
     def get_config(self) -> dict:
         return self._config.copy()
-    
+
     def get_type(self) -> str:
         return self._type
 
     def get_channel(self) -> str:
         return self._channel
-    
-    def send(self, Message:Message, **kwargs) -> None:
+
+    def send(self, message: Message, **kwargs) -> Any:
         raise NotImplementedError
 
     def recv(self, **kwargs) -> Optional[Message]:

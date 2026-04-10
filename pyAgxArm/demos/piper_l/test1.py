@@ -1,5 +1,6 @@
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from platform import system
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, PiperFW
 
 
 def wait_motion_done(robot, timeout: float = 5.0, poll_interval: float = 0.1) -> bool:
@@ -17,7 +18,45 @@ def wait_motion_done(robot, timeout: float = 5.0, poll_interval: float = 0.1) ->
         time.sleep(poll_interval)
 
 
-robot_cfg = create_agx_arm_config(robot="piper_l", comm="can", channel="can0", interface="socketcan")
+def create_demo_config():
+    platform_system = system()
+    if platform_system == "Windows":
+        return create_agx_arm_config(
+            robot=ArmModel.PIPER_L,
+            firmeware_version=PiperFW.DEFAULT,
+            interface="agx_cando",
+            channel="0",
+            # auto_set_motion_mode=False,
+            # enable_joint_limits=False,
+            # receive_own_messages=True,
+            # local_loopback=True,
+        )
+    if platform_system == "Linux":
+        return create_agx_arm_config(
+            robot=ArmModel.PIPER_L,
+            firmeware_version=PiperFW.DEFAULT,
+            interface="socketcan",
+            channel="can0",
+            # auto_set_motion_mode=False,
+            # enable_joint_limits=False,
+            # receive_own_messages=True,
+            # local_loopback=True,
+        )
+    if platform_system == "Darwin":
+        return create_agx_arm_config(
+            robot=ArmModel.PIPER_L,
+            firmeware_version=PiperFW.DEFAULT,
+            interface="slcan",
+            channel="/dev/ttyACM0",
+            # auto_set_motion_mode=False,
+            # enable_joint_limits=False,
+        )
+    raise RuntimeError(
+        "This demo currently supports Linux `socketcan`, Windows `agx_cando`, and macOS `slcan`."
+    )
+
+
+robot_cfg = create_demo_config()
 print(robot_cfg)
 robot = AgxArmFactory.create_arm(robot_cfg)
 robot.connect()
@@ -27,6 +66,12 @@ print(robot.__doc__)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
 # end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 print(end_effector.__doc__)
+
+
+# -------------------------- Config ---------------------------
+
+# robot.set_auto_set_motion_mode_enabled(False)
+# robot.set_joint_limits_enabled(False)
 
 
 # -------------------------- Basic ---------------------------
@@ -58,40 +103,36 @@ print(end_effector.__doc__)
 # robot.move_c(start_pose, mid_pose, end_pose)
 # wait_motion_done(robot, timeout=5.0)
 
-# robot.move_j([0.0, 0.4, -0.4, 0, -0.4, 0])
-# wait_motion_done(robot, timeout=5.0)
-
-# robot.move_j([0] * 6)
+# robot.move_j([0.0] * robot.joint_nums)
 # wait_motion_done(robot, timeout=5.0)
 
 
 # --------------------------  MIT mode ------------------------
 
-# robot.move_js([0, 0.2, -0.2, 0, -0.2, 0])
-# time.sleep(2)
+# robot.move_js([0, 0.1, -0.1, 0.0, 0.0, 0.0])
+# wait_motion_done(robot, timeout=5.0)
 
-# robot.move_mit(1, 0.0)
-# robot.move_mit(2, 0.4)
-# robot.move_mit(3, -0.4)
-# robot.move_mit(4, 0.0)
-# robot.move_mit(5, -0.4)
-# robot.move_mit(6, 0.4)
-# time.sleep(2)
+# for i in range(1, robot.joint_nums + 1):
+#     robot.move_mit(
+#         joint_index=i,
+#         p_des=0.0,
+#         v_des=0.0,
+#         kp=10.0,
+#         kd=0.8,
+#         t_ff=0.0,
+#     )
+# wait_motion_done(robot, timeout=5.0)
 
 
 # -------------------------- reset ----------------------------
 
-# robot.move_js([0] * 6)
+# robot.move_j([0] * robot.joint_nums)
 # time.sleep(2)
+
 # robot.electronic_emergency_stop()
 # time.sleep(1)
 
 # robot.reset()
-# time.sleep(1.5)
-# robot.enable()
-# robot.move_j([0.0] * 6)
-# time.sleep(0.01)
-# robot.disable()
 
 
 # -------------------------- Get data -------------------------
@@ -113,6 +154,7 @@ while True:
     # print(robot.get_firmware())
     # print(robot.get_joint_angles())
     # print(robot.get_flange_pose())
+    # print(robot.fk([0.0] * robot.joint_nums))
 
     # print(robot.get_leader_joint_angles())
     # print(end_effector.get_gripper_ctrl_states())
@@ -189,15 +231,16 @@ while True:
 # end_effector.set_gripper_teaching_pendant_param(max_range_config=0.1)   # 0.1m
 
 # 3. Manually squeeze and close the gripper.
+# input("Please squeeze and close the gripper.")
 
 # 4. Run the calibration command.
 # end_effector.calibrate_gripper()
 
 # 5. Move the gripper.
 # robot.set_motion_mode(robot.OPTIONS.MOTION_MODE.P)
-# end_effector.move_gripper(0.07)
+# end_effector.move_gripper_m(0.07)
 # time.sleep(0.2)
-# end_effector.move_gripper(0)
+# end_effector.move_gripper_deg(0)
 
 
 # -------------------------- Revo2 --------------------------
@@ -211,12 +254,13 @@ while True:
 # end_effector.position_time_ctrl(mode='time', thumb_tip=200)
 
 
-# -------------------------- Leader-Follower Arm --------------------------
+# -------------------------- Leader-Follower --------------------------
 
 # robot.set_leader_mode()
 # robot.set_follower_mode()
 # time.sleep(2)
 # robot.move_leader_to_home()
+# robot.move_leader_follower_to_home()
 # time.sleep(2)
 # robot.restore_leader_drag_mode()
 
@@ -258,14 +302,14 @@ while True:
 
 
 # print(robot.get_flange_vel_acc_limits())
-# print(robot.set_flange_vel_acc_limits(0.5, 0.13, 0.8, 0.2))
+# print(robot.set_flange_vel_acc_limits(1.0, 0.25, 1.5, 0.3))
 # print(robot.set_flange_vel_acc_limits_to_default())
 # print(robot.get_flange_vel_acc_limits())
 
 
 # -------------------------- TCP ----------------------------
 
-# robot.set_tcp_offset([0, 0, 0.15, 0, 0, 0])
+# robot.set_tcp_offset([0, 0, 0.1, 0, 0, 0])
 
 # time.sleep(0.1)
 # print(robot.get_tcp_pose())
@@ -278,5 +322,4 @@ while True:
 # pose = robot.get_tcp2flange_pose([0.3, 0.0, 0.3, 0.0, 1.570796326794896619, 0.0])
 # print(pose)
 # robot.move_p(pose)
-# time.sleep(2)
-# robot.move_l([0.1, 0.0, 0.3, 0.0, 1.570796326794896619, 0.0])
+# wait_motion_done(robot, timeout=5.0)

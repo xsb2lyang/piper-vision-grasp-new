@@ -1,16 +1,16 @@
 [build-system]
-requires = ["setuptools >= 40.0", "wheel"]
+requires = ["setuptools>=40.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyAgxArm"
-version = "1.0.0"
-description = "A SDK to control Agilex arms"
+dynamic = ["version"]
+description = "Python SDK for Agilex robotic arms"
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
-    { name = "Rosen Yin", email = "yinruocheng321@gmail.com" }
+    { name = "Agilex Robotics Co., Ltd." },
 ]
-license = { text = "MIT License" }
+license = {text = "LGPL-3.0-only"}
 requires-python = ">=3.6"
 dependencies = [
     "python-can>=3.3.4",
@@ -18,13 +18,14 @@ dependencies = [
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
     "Operating System :: POSIX :: Linux",
-    "License :: OSI Approved :: MIT License"
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS :: MacOS X",
 ]
 
 [project.urls]
 Homepage = "https://github.com/agilexrobotics/pyAgxArm"
-Repository = "https://github.com/agilexrobotics/pyAgxArm"
 ChangeLog = "https://github.com/agilexrobotics/pyAgxArm/blob/master/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
@@ -34,8 +35,13 @@ include = [
 ]
 
 [tool.setuptools.package-data]
-"pyAgxArm" = ["py.typed", "*"]
+"*" = ["*.pyi"]
+"pyAgxArm" = [
+    "py.typed",
+]
 
 [tool.setuptools]
 include-package-data = true
 
+[tool.setuptools.dynamic]
+version = {attr = "pyAgxArm.version.__version__"}

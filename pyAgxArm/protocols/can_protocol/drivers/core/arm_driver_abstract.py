@@ -1,19 +1,24 @@
 import threading
 from typing import Optional, TYPE_CHECKING, overload, List
 
-from typing_extensions import Literal, Final
+from typing_extensions import Literal
 from .arm_driver_interface import ArmDriverInterface
 from .driver_context import DriverContext
 from ...msgs.core import AttributeBase, MessageAbstract
 from .protocol_parser_interface import ProtocolParserInterface
-from .protocol_parser_abstract import DriverAPIOptions, DriverAPIProtoAdapter
+from .protocol_parser_abstract import DriverAPIOptions
 from ..core.arm_driver_context import ArmDriverContext
 from .....utiles.vaildator import Validator
+from .....utiles.mdh_kinematics import (
+    fk_from_mdh,
+    get_mdh
+)
 from .....utiles.tf import (
-    pose6_to_T,
-    matmul4,
-    inv_T,
-    T_to_pose6
+    T16_to_pose6,
+    inv_T16,
+    matmul16_to,
+    pose6_to_T16,
+    pose6_to_T16_into,
 )
 
 if TYPE_CHECKING:
@@ -46,11 +51,24 @@ class ArmDriverAbstract(ArmDriverInterface):
         self._effector = None
         self._parser = self._Parser(self._ctx.fps)
         self._arm_ctx = ArmDriverContext(config, self._ctx, self._parser)
+        auto_set_motion_mode = self._config.get("auto_set_motion_mode", True)
+        if not isinstance(auto_set_motion_mode, bool):
+            raise ValueError("Config `auto_set_motion_mode` should be bool")
+        self._auto_set_motion_mode_enabled = auto_set_motion_mode
+        enable_joint_limits = self._config.get("enable_joint_limits", True)
+        if not isinstance(enable_joint_limits, bool):
+            raise ValueError("Config `enable_joint_limits` should be bool")
+        self._joint_limits_enabled = enable_joint_limits
 
         # TCP
         self._tcp_offset_pose: List[float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self._T_f_t = None
         self._T_t_f = None
+        self._tcp_buf_a = [0.0] * 16
+        self._tcp_buf_b = [0.0] * 16
+
+        # MDH
+        self._mdh = get_mdh(self._config.get("robot"))
 
     def _send_msg(self, msg: AttributeBase) -> None:
         """Send one control message.
@@ -63,7 +81,18 @@ class ArmDriverAbstract(ArmDriverInterface):
         if isinstance(msg, AttributeBase):
             data = self._parser.pack(msg)
             if data is not None:
-                self._ctx.get_comm().send(data)
+                comm = self._ctx.get_comm()
+                if comm is None:
+                    raise RuntimeError(
+                        "Robot is not connected (comm is None). "
+                        "Call `connect()` before sending commands."
+                    )
+                try:
+                    comm.send(data)
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Failed to send {type(msg).__name__} on channel '{comm.get_channel()}': {exc}"
+                    ) from exc
         else:
             raise TypeError(
                 "msg must be AttributeBase"
@@ -154,23 +183,56 @@ class ArmDriverAbstract(ArmDriverInterface):
     def get_driver_version(self):
         raise NotImplementedError
 
-    def create_comm(self, config: dict = {}, comm: str = "can"):
+    def create_comm(self, config: Optional[dict] = None, comm: str = "can"):
         return self._ctx.create_comm(config, comm)
 
     def connect(self, start_read_thread: bool = True) -> None:
-        if not self._ctx.get_comm():
-            self._ctx.init_comm()
-        if self._ctx.get_comm() is None:
+        """
+        Initialize and connect the underlying communication, optionally
+        starting background reader/monitor/FPS threads.
+
+        This method is idempotent: repeated calls while already connected
+        will be ignored. Use `disconnect()` to stop threads and close comm
+        when the driver instance is no longer needed.
+        """
+        comm = self._ctx.get_comm()
+        if comm is None:
+            comm = self._ctx.init_comm()
+        if comm is None:
             raise ValueError("comm is None")
+        if not comm.is_connected():
+            comm.connect()
+        if not comm.is_connected():
+            raise RuntimeError("Failed to establish robot communication.")
         with self._lock:
             if self._connected:
                 return
-            self._connected = self._ctx.get_comm().is_connected()
+            self._connected = True
         if start_read_thread:
             self._ctx.start_th()
 
+    def disconnect(self, join_timeout: float = 1.0) -> None:
+        """
+        Disconnect from the arm and release underlying threads and CAN resources.
+
+        This method is idempotent and can be safely called when the arm
+        instance is no longer needed, e.g. after reading firmware version
+        and before creating a new instance.
+        """
+        with self._lock:
+            if not self._connected and (not self._ctx.get_comm() or self._ctx.get_comm().is_stopped()):
+                # Already disconnected or fully stopped
+                return
+            self._connected = False
+
+        # Stop internal DriverContext threads and FPS manager, and close comm
+        self._ctx.shutdown(join_timeout=join_timeout)
+
     def is_connected(self) -> bool:
-        return self._ctx.get_comm().is_connected()
+        comm = self._ctx.get_comm()
+        if comm is None:
+            return False
+        return comm.is_connected()
 
     def is_ok(self):
         return self._arm_ctx.is_ok()
@@ -182,10 +244,16 @@ class ArmDriverAbstract(ArmDriverInterface):
         return self._config
 
     def get_type(self):
-        return self._ctx.get_comm().get_type()
+        comm = self._ctx.get_comm()
+        if comm is None:
+            return None
+        return comm.get_type()
 
     def get_channel(self):
-        return self._ctx.get_comm().get_channel()
+        comm = self._ctx.get_comm()
+        if comm is None:
+            return None
+        return comm.get_channel()
 
     def get_joint_angles(self):
         raise NotImplementedError
@@ -216,6 +284,22 @@ class ArmDriverAbstract(ArmDriverInterface):
 
     # -------------------------- TCP --------------------------
 
+    def _world_flange_to_tcp_noclamp(self, flange_pose: List[float]) -> List[float]:
+        """``flange_pose`` must already satisfy ``Validator.clamp_pose6``."""
+        if self._T_f_t is None:
+            return flange_pose
+        pose6_to_T16_into(self._tcp_buf_a, flange_pose)
+        matmul16_to(self._tcp_buf_b, self._tcp_buf_a, self._T_f_t)
+        return T16_to_pose6(self._tcp_buf_b)
+
+    def _world_tcp_to_flange_noclamp(self, tcp_pose: List[float]) -> List[float]:
+        """``tcp_pose`` must already satisfy ``Validator.clamp_pose6``."""
+        if self._T_t_f is None:
+            return tcp_pose
+        pose6_to_T16_into(self._tcp_buf_a, tcp_pose)
+        matmul16_to(self._tcp_buf_b, self._tcp_buf_a, self._T_t_f)
+        return T16_to_pose6(self._tcp_buf_b)
+
     def set_tcp_offset(self, pose: List[float]):
         """Set TCP offset pose in the flange frame.
 
@@ -236,8 +320,8 @@ class ArmDriverAbstract(ArmDriverInterface):
             self._T_f_t = None
             self._T_t_f = None
         else:
-            self._T_f_t = pose6_to_T(self._tcp_offset_pose)
-            self._T_t_f = inv_T(self._T_f_t)
+            self._T_f_t = pose6_to_T16(self._tcp_offset_pose)
+            self._T_t_f = inv_T16(self._T_f_t)
 
     def get_tcp_pose(self):
         """Get TCP pose by applying the configured TCP offset to the flange pose.
@@ -250,10 +334,11 @@ class ArmDriverAbstract(ArmDriverInterface):
         flange: Optional[MessageAbstract] = self.get_flange_pose()
         if flange is None:
             return None
-        
+
+        fp = Validator.clamp_pose6(flange.msg, name="flange_pose")
         return MessageAbstract(
             msg_type="tcp_pose",
-            msg=self.get_flange2tcp_pose(flange.msg),
+            msg=self._world_flange_to_tcp_noclamp(fp),
             timestamp=flange.timestamp,
             hz=flange.hz,
         )
@@ -288,12 +373,7 @@ class ArmDriverAbstract(ArmDriverInterface):
             flange_pose,
             name="flange_pose"
         )
-        if self._T_f_t is None:
-            return flange_pose
-        
-        T_w_f = pose6_to_T(flange_pose)
-        T_w_t = matmul4(T_w_f, self._T_f_t)
-        return T_to_pose6(T_w_t)
+        return self._world_flange_to_tcp_noclamp(flange_pose)
 
     def get_tcp2flange_pose(self, tcp_pose: List[float]):
         """Convert a target TCP pose (base frame) to the corresponding flange pose.
@@ -311,9 +391,45 @@ class ArmDriverAbstract(ArmDriverInterface):
             tcp_pose,
             name="tcp_pose"
         )
-        if self._T_t_f is None:
-            return tcp_pose
-        
-        T_w_t = pose6_to_T(tcp_pose)
-        T_w_f = matmul4(T_w_t, self._T_t_f)
-        return T_to_pose6(T_w_f)
+        return self._world_tcp_to_flange_noclamp(tcp_pose)
+
+    # -------------------------- FK --------------------------
+
+    def fk(self, joint_angles: List[float]):
+        """Forward kinematics (modified DH) to flange pose.
+
+        Parameters
+        ----------
+        joint_angles :
+            Joint angles in radians
+            (``joint_1`` … ``joint_n``).
+
+        Returns
+        -------
+        list[float]
+            ``[x, y, z, roll, pitch, yaw]`` — position in meters, Euler angles in radians.
+
+        Examples
+        --------
+        >>> ja = robot.get_joint_angles()
+        >>> if ja is not None:
+        ...     fp = robot.fk(ja.msg)
+        ...     x, y, z, roll, pitch, yaw = fp
+        """
+        return fk_from_mdh(self._mdh, joint_angles)
+
+    # -------------------------- CONFIG --------------------------
+
+    def set_auto_set_motion_mode_enabled(self, enabled: bool) -> None:
+        """Enable/disable auto motion-mode switching at runtime."""
+        if not isinstance(enabled, bool):
+            raise ValueError("`enabled` should be bool")
+        self._auto_set_motion_mode_enabled = enabled
+        self._config["auto_set_motion_mode"] = enabled
+
+    def set_joint_limits_enabled(self, enabled: bool) -> None:
+        """Enable/disable software joint-angle limits at runtime."""
+        if not isinstance(enabled, bool):
+            raise ValueError("`enabled` should be bool")
+        self._joint_limits_enabled = enabled
+        self._config["enable_joint_limits"] = enabled

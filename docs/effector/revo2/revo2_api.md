@@ -33,9 +33,9 @@
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 ```
 
@@ -79,9 +79,9 @@ class EFFECTOR:
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 ```
@@ -111,9 +111,9 @@ connect(self, start_read_thread: bool = True) -> None
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -139,9 +139,9 @@ is_ok(self) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -168,9 +168,9 @@ get_fps(self) -> float
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -223,9 +223,9 @@ get_hand_status(self) -> Optional[MessageAbstract[FeedbackHandStatus]]
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -266,9 +266,9 @@ get_finger_pos(self) -> Optional[MessageAbstract[FeedbackFingerPos]]
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -309,9 +309,9 @@ get_finger_spd(self) -> Optional[MessageAbstract[FeedbackFingerSpd]]
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -352,9 +352,9 @@ get_finger_current(self) -> Optional[MessageAbstract[FeedbackFingerCurrent]]
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -402,9 +402,9 @@ position_ctrl(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -450,9 +450,9 @@ speed_ctrl(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -494,9 +494,9 @@ current_ctrl(
 **Usage Example:**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -543,9 +543,9 @@ position_time_ctrl(
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -592,9 +592,9 @@ end_effector.position_time_ctrl(mode="time", thumb_tip=200)
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 ```
 
@@ -638,9 +638,9 @@ class EFFECTOR:
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 ```
@@ -670,9 +670,9 @@ connect(self, start_read_thread: bool = True) -> None
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -698,9 +698,9 @@ is_ok(self) -> bool
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -727,9 +727,9 @@ get_fps(self) -> float
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -782,9 +782,9 @@ get_hand_status(self) -> Optional[MessageAbstract[FeedbackHandStatus]]
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -825,9 +825,9 @@ get_finger_pos(self) -> Optional[MessageAbstract[FeedbackFingerPos]]
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -868,9 +868,9 @@ get_finger_spd(self) -> Optional[MessageAbstract[FeedbackFingerSpd]]
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -911,9 +911,9 @@ get_finger_current(self) -> Optional[MessageAbstract[FeedbackFingerCurrent]]
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -961,9 +961,9 @@ position_ctrl(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -1009,9 +1009,9 @@ speed_ctrl(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -1053,9 +1053,9 @@ current_ctrl(
 **使用示例：**
 
 ```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()
@@ -1102,9 +1102,9 @@ position_time_ctrl(
 
 ```python
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT, channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 robot.connect()

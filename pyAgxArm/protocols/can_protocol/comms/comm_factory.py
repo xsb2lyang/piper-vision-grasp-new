@@ -39,11 +39,6 @@ class CommsFactory:
 
         return cls._registry[type][version]
 
-    # @classmethod
-    # def create_comm(cls, name: str, version: str = "base", **kwargs) -> T:
-    #     cls_type: Type[T] = cls._registry[name][version]
-    #     return cls_type(**kwargs)
-
     @classmethod
     def create_comm(cls, type: str, version: str = "base", **kwargs) -> T:
         if type not in cls._registry:
@@ -53,4 +48,3 @@ class CommsFactory:
 
         cls_type: Type[T] = cls._registry[type][version]
         return cls_type(**kwargs)
-    

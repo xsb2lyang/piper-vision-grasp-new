@@ -1,0 +1,39 @@
+{
+    "robot": "piper_h",
+    "firmeware_version": "default",
+    "comm": {
+        "type": "can",
+        "can": {
+            "channel": "can0",
+            "interface": "socketcan",
+            "bitrate": 1000000,
+            "enable_check_can": true,
+            "auto_connect": true,
+            "timeout": 0.001,
+            "local_loopback": false,
+            "receive_own_messages": false
+        }
+    },
+    "log": {
+        "level": "INFO",
+        "path": ""
+    },
+    "auto_set_motion_mode": true,
+    "enable_joint_limits": true,
+    "joint_names": [
+        "joint1",
+        "joint2",
+        "joint3",
+        "joint4",
+        "joint5",
+        "joint6"
+    ],
+    "joint_limits": {
+        "joint1": [-2.617994, 2.617994],
+        "joint2": [0.0, 3.141593],
+        "joint3": [-2.96706, 0.0],
+        "joint4": [-1.74533, 1.74533],
+        "joint5": [-1.22173, 1.22173],
+        "joint6": [-2.094396, 2.094396]
+    }
+}

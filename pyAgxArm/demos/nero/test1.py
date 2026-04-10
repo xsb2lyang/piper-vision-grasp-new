@@ -1,5 +1,6 @@
 import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
+from platform import system
+from pyAgxArm import create_agx_arm_config, AgxArmFactory, ArmModel, NeroFW
 
 
 def wait_motion_done(robot, timeout: float = 5.0, poll_interval: float = 0.1) -> bool:
@@ -17,20 +18,63 @@ def wait_motion_done(robot, timeout: float = 5.0, poll_interval: float = 0.1) ->
         time.sleep(poll_interval)
 
 
-robot_cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0", interface="socketcan")
+def create_demo_config():
+    platform_system = system()
+    if platform_system == "Windows":
+        return create_agx_arm_config(
+            robot=ArmModel.NERO,
+            firmeware_version=NeroFW.DEFAULT,
+            interface="agx_cando",
+            channel="0",
+            # auto_set_motion_mode=False,
+            # enable_joint_limits=False,
+            # receive_own_messages=True,
+            # local_loopback=True,
+        )
+    if platform_system == "Linux":
+        return create_agx_arm_config(
+            robot=ArmModel.NERO,
+            firmeware_version=NeroFW.DEFAULT,
+            interface="socketcan",
+            channel="can0",
+            # auto_set_motion_mode=False,
+            # enable_joint_limits=False,
+            # receive_own_messages=True,
+            # local_loopback=True,
+        )
+    if platform_system == "Darwin":
+        return create_agx_arm_config(
+            robot=ArmModel.NERO,
+            firmeware_version=NeroFW.DEFAULT,
+            interface="slcan",
+            channel="/dev/ttyACM0",
+            # auto_set_motion_mode=False,
+            # enable_joint_limits=False,
+        )
+    raise RuntimeError(
+        "This demo currently supports Linux `socketcan`, Windows `agx_cando`, and macOS `slcan`."
+    )
+
+
+robot_cfg = create_demo_config()
 print(robot_cfg)
 robot = AgxArmFactory.create_arm(robot_cfg)
 robot.connect()
 print(robot.get_channel())
 print(robot.__doc__)
 
-end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
+end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+# end_effector = robot.init_effector(robot.OPTIONS.EFFECTOR.REVO2)
 print(end_effector.__doc__)
 
 
-# -------------------------- Basic ---------------------------
+# -------------------------- Config ---------------------------
 
-# robot.set_normal_mode()
+# robot.set_auto_set_motion_mode_enabled(False)
+# robot.set_joint_limits_enabled(False)
+
+
+# -------------------------- Basic ---------------------------
 
 # while not robot.enable():
 #     time.sleep(0.01)
@@ -39,32 +83,30 @@ print(end_effector.__doc__)
 #     time.sleep(0.01)
 
 # robot.set_speed_percent(100)
-# robot.set_motion_mode(robot.OPTIONS.MOTION_MODE.P)
+# robot.set_motion_mode(robot.OPTIONS.MOTION_MODE.J)
 
 
-# -------------------------- Move -----------------------------
+# -------------------------- Move ----------------------------
 
-# The following poses are for Piper and need to be replaced with Nero poses to run successfully on Nero.
-
-# robot.move_p([-0.4, -0.0, 0.4, 1.5708, 0.0, 0.0])
+# robot.move_p([-0.45, -0.0, 0.45, -1.5708, 0.0, -3.14159])
 # wait_motion_done(robot, timeout=5.0)
 
-# robot.move_l([-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0])
+# robot.move_l([-0.45, -0.2, 0.45, -1.5708, 0.0, -3.14159])
 # wait_motion_done(robot, timeout=5.0)
 
-# start_pose = [-0.4, -0.2, 0.4, 1.5708, 0.0, 0.0]
-# mid_pose = [-0.4, 0.0, 0.45, 1.5708, 0.0, 0.0]
-# end_pose = [-0.4, 0.2, 0.4, 1.5708, 0.0, 0.0]
+# start_pose = [-0.45, -0.2, 0.45, -1.5708, 0.0, -3.14159]
+# mid_pose = [-0.45, 0.0, 0.5, -1.5708, 0.0, -3.14159]
+# end_pose = [-0.45, 0.2, 0.45, -1.5708, 0.0, -3.14159]
 # robot.move_c(start_pose, mid_pose, end_pose)
 # wait_motion_done(robot, timeout=5.0)
 
-# robot.move_j([0.01] * 7)
+# robot.move_j([0.01] * robot.joint_nums)
 # wait_motion_done(robot, timeout=5.0)
 
 
 # --------------------------  MIT mode ------------------------
 
-# robot.move_js([0.1] * 7)
+# robot.move_js([0.1] * robot.joint_nums)
 # wait_motion_done(robot, timeout=5.0)
 
 # for i in range(1, robot.joint_nums + 1):
@@ -81,7 +123,7 @@ print(end_effector.__doc__)
 
 # -------------------------- reset ----------------------------
 
-# robot.move_j([0] * 7)
+# robot.move_j([0] * robot.joint_nums)
 # time.sleep(2)
 
 # robot.electronic_emergency_stop()
@@ -92,26 +134,47 @@ print(end_effector.__doc__)
 
 # -------------------------- Get data -------------------------
 
-
 while True:
     break
 
     # print(robot.get_fps())
     # print(robot.is_ok())
+    # print(end_effector.get_fps())
+    # print(end_effector.is_ok())
 
     t = time.time()
 
     # print(robot.get_arm_status())
+    # print(end_effector.get_gripper_status())
 
+    # print(robot.get_firmware())
     # print(robot.get_joint_angles())
     # print(robot.get_flange_pose())
+    # print(robot.fk([0.0] * robot.joint_nums))
 
     # print(robot.get_leader_joint_angles())
+    # print(end_effector.get_gripper_ctrl_states())
 
     # print(robot.get_driver_states(1))
     # print(robot.get_motor_states(1))
     # print(robot.get_joint_enable_status(1))
     # print(robot.get_joints_enable_status_list())
+
+    # print(end_effector.get_gripper_teaching_pendant_param())
+
+    # for driver_state in [robot.get_driver_states(i) for i in range(1, robot.joint_nums + 1)]:
+    #     print(driver_state)
+    #     print()
+
+    # for motor_state in [robot.get_motor_states(i) for i in range(1, robot.joint_nums + 1)]:
+    #     print(motor_state)
+    #     print()
+
+    # Revo2
+    # print(end_effector.get_hand_status())
+    # print(end_effector.get_finger_pos())
+    # print(end_effector.get_finger_spd())
+    # print(end_effector.get_finger_current())
 
     t = round((time.time() - t) * 1000, 4)
 
@@ -123,8 +186,61 @@ while True:
     time.sleep(0.005)
 
 
+# -------------------------- Motor torque measurements -------
+
+# robot.move_mit(6, 0.0, v_des=0.0, kp=0, kd=0, t_ff=0.8)
+
+# import numpy as np
+
+# data = []
+
+# while True:
+#     data.append(robot.get_motor_states(6).msg.torque)
+#     time.sleep(0.02)
+#     if len(data) > 100:
+#         break
+
+# data = np.mean(data)
+# print(data)
+
+
+# -------------------------- Gripper --------------------------
+
+# Calibrate the gripper.
+# 1. Disable the gripper.
+# end_effector.disable_gripper()
+
+# 2. Set the actual maximum stroke of the gripper.
+# end_effector.set_gripper_teaching_pendant_param(max_range_config=0.07)  # 0.07m
+# end_effector.set_gripper_teaching_pendant_param(max_range_config=0.1)   # 0.1m
+
+# 3. Manually squeeze and close the gripper.
+# input("Please squeeze and close the gripper.")
+
+# 4. Run the calibration command.
+# end_effector.calibrate_gripper()
+
+# 5. Move the gripper.
+# robot.set_motion_mode(robot.OPTIONS.MOTION_MODE.P)
+# end_effector.move_gripper_m(0.07)
+# time.sleep(0.2)
+# end_effector.move_gripper_deg(0)
+
+
+# -------------------------- Revo2 --------------------------
+
+# end_effector.position_ctrl()
+# end_effector.speed_ctrl()
+# end_effector.current_ctrl()
+
+# The tip of the thumb moves to position 100 in 2 seconds.
+# end_effector.position_time_ctrl(mode='pos', thumb_tip=100)
+# end_effector.position_time_ctrl(mode='time', thumb_tip=200)
+
+
 # -------------------------- Leader-Follower --------------------------
 
+# robot.set_normal_mode()
 # robot.set_leader_mode()
 # robot.set_follower_mode()
 
@@ -141,7 +257,7 @@ while True:
 #     tcp_pose = robot.get_flange2tcp_pose(flange_pose.msg)
 #     print(tcp_pose)
 
-# pose = robot.get_tcp2flange_pose([-0.160251, -0.043348, 0.6907249999999999, 1.117935745779928, 0.9272061651219876, 0.14817845349431857])
+# pose = robot.get_tcp2flange_pose([-0.45, -0.0, 0.45, -1.5708, 0.0, -3.14159])
+# print(pose)
 # robot.move_p(pose)
-# time.sleep(2)
-# robot.move_p([-0.160251, -0.043348, 0.6907249999999999, 1.117935745779928, 0.9272061651219876, 0.14817845349431857])
+# wait_motion_done(robot, timeout=5.0)

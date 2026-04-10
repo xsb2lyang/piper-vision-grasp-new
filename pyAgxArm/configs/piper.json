@@ -1,29 +1,39 @@
 {
     "robot": "piper",
-    "comm":{
-        "type":"can",
-        "can":{
+    "firmeware_version": "default",
+    "comm": {
+        "type": "can",
+        "can": {
             "channel": "can0",
             "interface": "socketcan",
             "bitrate": 1000000,
-            "enable_check_can": false,
-            "auto_connect": false,
-            "timeout": 1.0,
+            "enable_check_can": true,
+            "auto_connect": true,
+            "timeout": 0.001,
             "local_loopback": false,
             "receive_own_messages": false
         }
     },
-    "log":{
-        "log_level":"DEBUG",
-        "log_path":""
+    "log": {
+        "level": "INFO",
+        "path": ""
     },
-    "joint_names":["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"],
-    "joint_limits":{
-        "joint1":[-2.617994, 2.617994],
-        "joint2":[0.0, 3.141593],
-        "joint3":[-2.967060, 0.0],
-        "joint4":[-1.745330, 1.745330],
-        "joint5":[-1.221730, 1.221730],
-        "joint6":[-2.094396, 2.094396]
+    "auto_set_motion_mode": true,
+    "enable_joint_limits": true,
+    "joint_names": [
+        "joint1",
+        "joint2",
+        "joint3",
+        "joint4",
+        "joint5",
+        "joint6"
+    ],
+    "joint_limits": {
+        "joint1": [-2.617994, 2.617994],
+        "joint2": [0.0, 3.141593],
+        "joint3": [-2.96706, 0.0],
+        "joint4": [-1.74533, 1.74533],
+        "joint5": [-1.22173, 1.22173],
+        "joint6": [-2.094396, 2.094396]
     }
 }
