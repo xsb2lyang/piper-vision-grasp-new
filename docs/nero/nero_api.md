@@ -33,6 +33,8 @@
   - [Get TCP Pose — get_tcp_pose()](#get-tcp-pose--get_tcp_pose)
   - [Flange Pose to TCP Pose — get_flange2tcp_pose()](#flange-pose-to-tcp-pose--get_flange2tcp_pose)
   - [TCP Pose to Flange Pose — get_tcp2flange_pose()](#tcp-pose-to-flange-pose--get_tcp2flange_pose)
+- [Kinematics Related](#kinematics-related)
+  - [Forward Kinematics — fk()](#forward-kinematics--fk)
 - [Leader-Follower Arm](#leader-follower-arm)
   - [Set Normal Mode — set_normal_mode()](#set-normal-mode--set_normal_mode)
   - [Set Leader Mode — set_leader_mode()](#set-leader-mode--set_leader_mode)
@@ -972,6 +974,76 @@ print("target_flange_pose =", target_flange_pose)
 
 ---
 
+## Kinematics Related
+
+### Forward Kinematics — `fk()`
+
+**Description:** Compute the end **flange pose** from a given set of joint angles using the robot's built-in modified DH model.
+
+This is an **offline** computation (no CAN I/O). The output pose format matches `.msg` from [get_flange_pose()](#get-flange-pose--get_flange_pose):  
+`[x, y, z, roll, pitch, yaw]` in the **base frame**, where `x/y/z` are meters and `roll/pitch/yaw` are radians (ZYX RPY convention used by the SDK).
+
+> **Note:** Nero has 7 DOF. The `fk()` input is a 7-element joint list.
+
+**Function Definition:**
+
+```python
+fk(self, joint_angles: list[float]) -> list[float]
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `joint_angles` | `list[float]` | Joint angles in **rad**, length 7: `[j1, j2, j3, j4, j5, j6, j7]` |
+
+**Return Value:** `list[float]`
+
+`[x, y, z, roll, pitch, yaw]` — flange pose in base frame.
+
+**Usage Examples:**
+
+1) Combine with [get_joint_angles()](#get-joint-angles--get_joint_angles) (current arm state → FK):
+
+```python
+ja = robot.get_joint_angles()
+if ja is not None:
+    flange_pose = robot.fk(ja.msg)
+    print("fk flange:", flange_pose)
+```
+
+2) Combine with [get_leader_joint_angles()](#get-leader-joint-angles--get_leader_joint_angles) (leader angles → FK):
+
+```python
+mja = robot.get_leader_joint_angles()
+if mja is not None:
+    leader_flange_pose = robot.fk(mja.msg)
+    print("leader fk flange:", leader_flange_pose)
+```
+
+3) Combine with [get_flange2tcp_pose()](#flange-pose-to-tcp-pose--get_flange2tcp_pose) (FK flange → derived TCP):
+
+```python
+ja = robot.get_joint_angles()
+if ja is not None:
+    flange_pose = robot.fk(ja.msg)
+    tcp_pose = robot.get_flange2tcp_pose(flange_pose)
+    print("fk tcp:", tcp_pose)
+```
+
+4) Compare measured flange pose vs FK result (for quick consistency checks):
+
+```python
+ja = robot.get_joint_angles()
+fp = robot.get_flange_pose()
+if ja is not None and fp is not None:
+    fk_fp = robot.fk(ja.msg)
+    print("measured flange:", fp.msg)
+    print("fk flange:", fk_fp)
+```
+
+---
+
 ## Leader-Follower Arm
 
 **Controller behavior:** On the arm side, **all control and configuration commands** — including motion commands (`move_*`), mode switching (e.g. `set_normal_mode()` / `set_leader_mode()` / `set_follower_mode()`), speed/motion settings, and other parameter-setting APIs — **do not take effect while the arm is disabled**. The SDK may still send frames, but the controller will not apply them until the arm is **enabled** (use `enable()`).
@@ -1584,6 +1656,8 @@ for i in range(1, robot.joint_nums + 1):
   - [获取 TCP 位姿 — get_tcp_pose()](#获取-tcp-位姿--get_tcp_pose)
   - [法兰位姿转 TCP 位姿 — get_flange2tcp_pose()](#法兰位姿转-tcp-位姿--get_flange2tcp_pose)
   - [TCP 位姿转法兰位姿 — get_tcp2flange_pose()](#tcp-位姿转法兰位姿--get_tcp2flange_pose)
+- [运动学相关](#运动学相关)
+  - [正运动学 — fk()](#正运动学--fk)
 - [Leader-Follower 臂](#leader-follower-臂)
   - [设定正常模式 — set_normal_mode()](#设定正常模式--set_normal_mode)
   - [设定主导臂（Leader）模式 — set_leader_mode()](#设定主导臂leader模式--set_leader_mode)
@@ -2517,6 +2591,76 @@ target_flange_pose = robot.get_tcp2flange_pose(target_tcp_pose)
 print("target_flange_pose =", target_flange_pose)
 
 # robot.move_p(target_flange_pose)  # 注意：会触发运动
+```
+
+---
+
+## 运动学相关
+
+### 正运动学 — `fk()`
+
+**功能说明：** 根据给定关节角度，使用机械臂内置的改进 DH（MDH）模型计算末端**法兰位姿**。
+
+该接口为**离线计算**（不依赖 CAN 通信）。输出位姿格式与 [get_flange_pose()](#读取法兰位姿--get_flange_pose) 返回的 `.msg` 一致：  
+`[x, y, z, roll, pitch, yaw]`（基坐标系），其中 `x/y/z` 单位为米，`roll/pitch/yaw` 单位为弧度（SDK 采用 ZYX 的 RPY 约定）。
+
+> **注意：** Nero 为 7 轴，`fk()` 输入的关节角列表长度为 7。
+
+**函数定义：**
+
+```python
+fk(self, joint_angles: list[float]) -> list[float]
+```
+
+**参数说明：**
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `joint_angles` | `list[float]` | 关节角度（单位：rad），长度 7：`[j1, j2, j3, j4, j5, j6, j7]` |
+
+**返回值：** `list[float]`
+
+`[x, y, z, roll, pitch, yaw]` — 法兰位姿（基坐标系）。
+
+**使用示例：**
+
+1）与 [get_joint_angles()](#读取关节角度--get_joint_angles) 组合（读取当前关节角 → FK）：
+
+```python
+ja = robot.get_joint_angles()
+if ja is not None:
+    flange_pose = robot.fk(ja.msg)
+    print("fk 法兰:", flange_pose)
+```
+
+2）与 [get_leader_joint_angles()](#读取主导臂leader关节角度--get_leader_joint_angles) 组合（读取主导臂角度 → FK）：
+
+```python
+mja = robot.get_leader_joint_angles()
+if mja is not None:
+    leader_flange_pose = robot.fk(mja.msg)
+    print("leader fk 法兰:", leader_flange_pose)
+```
+
+3）与 [get_flange2tcp_pose()](#法兰位姿转-tcp-位姿--get_flange2tcp_pose) 组合（FK 法兰 → 推导 TCP）：
+
+```python
+ja = robot.get_joint_angles()
+if ja is not None:
+    flange_pose = robot.fk(ja.msg)
+    tcp_pose = robot.get_flange2tcp_pose(flange_pose)
+    print("fk TCP:", tcp_pose)
+```
+
+4）对比“测得法兰位姿”与“FK 计算位姿”（快速一致性检查）：
+
+```python
+ja = robot.get_joint_angles()
+fp = robot.get_flange_pose()
+if ja is not None and fp is not None:
+    fk_fp = robot.fk(ja.msg)
+    print("测得法兰:", fp.msg)
+    print("fk 法兰:", fk_fp)
 ```
 
 ---
