@@ -35,6 +35,7 @@ class IntrinsicsCalibrationGuiApp(CalibrationViewerBase):
         self.session_var = tk.StringVar(value=display_repo_path(self.session_dir))
         self.result_var = tk.StringVar(value="No calibration result yet.")
         self.quality_summary_var = tk.StringVar(value="No samples yet.")
+        self.capture_ready_var = tk.StringVar(value="Not recommended")
 
         super().__init__(
             root,
@@ -69,6 +70,21 @@ class IntrinsicsCalibrationGuiApp(CalibrationViewerBase):
             ttk.Label(panel, textvariable=variable, wraplength=420, justify="left").grid(
                 row=row_idx, column=1, sticky="w", pady=3
             )
+
+        light_row = len(rows)
+        ttk.Label(panel, text="Capture Light").grid(row=light_row, column=0, sticky="nw", pady=3)
+        light_frame = ttk.Frame(panel)
+        light_frame.grid(row=light_row, column=1, sticky="w", pady=3)
+        self.capture_light_canvas = tk.Canvas(
+            light_frame,
+            width=18,
+            height=18,
+            bg=self.root.cget("bg"),
+            highlightthickness=0,
+            bd=0,
+        )
+        self.capture_light_canvas.grid(row=0, column=0, padx=(0, 8))
+        ttk.Label(light_frame, textvariable=self.capture_ready_var).grid(row=0, column=1, sticky="w")
 
         controls = ttk.LabelFrame(parent, text="Controls", padding=10)
         controls.grid(row=1, column=0, sticky="ew", pady=(10, 10))
@@ -202,6 +218,7 @@ class IntrinsicsCalibrationGuiApp(CalibrationViewerBase):
 
     def refresh_custom_ui(self) -> None:
         self.sample_count_var.set(str(len(self.samples)))
+        self._refresh_capture_light()
         self._refresh_quality_visuals()
 
     def handle_key_action(self, key: str) -> None:
@@ -231,6 +248,14 @@ class IntrinsicsCalibrationGuiApp(CalibrationViewerBase):
             )
         self._draw_coverage_canvas()
         self._draw_scale_canvas()
+
+    def _refresh_capture_light(self) -> None:
+        ready = self.capture_hint_var.get().strip() == "Ready to capture."
+        fill = "#22c55e" if ready else "#ef4444"
+        outline = "#166534" if ready else "#7f1d1d"
+        self.capture_ready_var.set("Recommended" if ready else "Not recommended")
+        self.capture_light_canvas.delete("all")
+        self.capture_light_canvas.create_oval(2, 2, 16, 16, fill=fill, outline=outline, width=2)
 
     def _draw_coverage_canvas(self) -> None:
         canvas = self.coverage_canvas

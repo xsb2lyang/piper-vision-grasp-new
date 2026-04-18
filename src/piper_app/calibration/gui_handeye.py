@@ -55,6 +55,7 @@ class HandEyeCalibrationGuiApp(CalibrationViewerBase):
         self.result_var = tk.StringVar(value="No calibration result yet.")
         self.diversity_var = tk.StringVar(value="No samples yet.")
         self.consistency_var = tk.StringVar(value="No method scores yet.")
+        self.capture_ready_var = tk.StringVar(value="Not recommended")
 
         super().__init__(
             root,
@@ -76,6 +77,7 @@ class HandEyeCalibrationGuiApp(CalibrationViewerBase):
             extra_rows=[
                 ("Board", self.board_status_var),
                 ("Capture Hint", self.capture_hint_var),
+                ("Capture Light", self.capture_ready_var),
                 ("Sample Count", self.sample_count_var),
                 ("Intrinsics", self.intrinsics_var),
                 ("Session", self.session_var),
@@ -85,11 +87,25 @@ class HandEyeCalibrationGuiApp(CalibrationViewerBase):
             ],
             title="Hand-Eye Status",
         )
-        self.build_pose_panel(parent, row=2, title="Current TCP Pose")
-        self.build_joint_panel(parent, row=3, title="Current Joint Angles")
+        light_panel = ttk.Frame(parent)
+        light_panel.grid(row=2, column=0, sticky="w", pady=(0, 10))
+        self.capture_light_canvas = tk.Canvas(
+            light_panel,
+            width=18,
+            height=18,
+            bg=self.root.cget("bg"),
+            highlightthickness=0,
+            bd=0,
+        )
+        self.capture_light_canvas.grid(row=0, column=0, padx=(0, 8))
+        ttk.Label(light_panel, text="Green: recommend capture. Red: do not capture.").grid(
+            row=0, column=1, sticky="w"
+        )
+        self.build_pose_panel(parent, row=3, title="Current TCP Pose")
+        self.build_joint_panel(parent, row=4, title="Current Joint Angles")
 
         controls = ttk.LabelFrame(parent, text="Controls", padding=10)
-        controls.grid(row=4, column=0, sticky="ew", pady=(0, 10))
+        controls.grid(row=5, column=0, sticky="ew", pady=(0, 10))
         ttk.Button(controls, text="Capture (S)", command=lambda: self.run_action(self.capture_sample)).grid(
             row=0, column=0, padx=(0, 6), pady=(0, 6), sticky="ew"
         )
@@ -108,7 +124,7 @@ class HandEyeCalibrationGuiApp(CalibrationViewerBase):
         ttk.Button(controls, text="Quit (Q)", command=self.on_close).grid(row=2, column=1, sticky="ew")
 
         visuals = ttk.LabelFrame(parent, text="Sample Quality", padding=10)
-        visuals.grid(row=5, column=0, sticky="nsew")
+        visuals.grid(row=6, column=0, sticky="nsew")
         visuals.columnconfigure(0, weight=1)
         ttk.Label(visuals, text="TCP XY Spread").grid(row=0, column=0, sticky="w")
         self.tcp_xy_canvas = tk.Canvas(
@@ -286,6 +302,7 @@ class HandEyeCalibrationGuiApp(CalibrationViewerBase):
 
     def refresh_custom_ui(self) -> None:
         self.sample_count_var.set(str(len(self.samples)))
+        self._refresh_capture_light()
         self._refresh_quality_visuals()
 
     def handle_key_action(self, key: str) -> None:
@@ -310,6 +327,14 @@ class HandEyeCalibrationGuiApp(CalibrationViewerBase):
             self.consistency_var.set("No method scores yet.")
         self._draw_tcp_xy_canvas()
         self._draw_distance_canvas()
+
+    def _refresh_capture_light(self) -> None:
+        ready = self.capture_hint_var.get().strip() == "Ready to capture."
+        fill = "#22c55e" if ready else "#ef4444"
+        outline = "#166534" if ready else "#7f1d1d"
+        self.capture_ready_var.set("Recommended" if ready else "Not recommended")
+        self.capture_light_canvas.delete("all")
+        self.capture_light_canvas.create_oval(2, 2, 16, 16, fill=fill, outline=outline, width=2)
 
     def _draw_tcp_xy_canvas(self) -> None:
         canvas = self.tcp_xy_canvas
