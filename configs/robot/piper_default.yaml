@@ -1,0 +1,6 @@
+robot: piper
+interface: auto
+channel: auto
+bitrate: 1000000
+firmware_timeout: 5.0
+tcp_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

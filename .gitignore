@@ -10,3 +10,15 @@ build
 *.so
 temp
 .pytest_cache/
+.venv/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.coverage
+coverage.xml
+*.pyc
+*.pyo
+*.swp
+*.swo
+src/*.egg-info/
+src/**/*.egg-info/
