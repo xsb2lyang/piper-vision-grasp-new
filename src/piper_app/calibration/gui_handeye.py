@@ -56,6 +56,8 @@ class HandEyeCalibrationGuiApp(CalibrationViewerBase):
         self.diversity_var = tk.StringVar(value="No samples yet.")
         self.consistency_var = tk.StringVar(value="No method scores yet.")
         self.capture_ready_var = tk.StringVar(value="Not recommended")
+        self.result_grade_var = tk.StringVar(value="Pending")
+        self.result_grade_detail_var = tk.StringVar(value="Run calibration to score the current hand-eye result.")
 
         super().__init__(
             root,
@@ -126,7 +128,32 @@ class HandEyeCalibrationGuiApp(CalibrationViewerBase):
         visuals = ttk.LabelFrame(parent, text="Sample Quality", padding=10)
         visuals.grid(row=6, column=0, sticky="nsew")
         visuals.columnconfigure(0, weight=1)
-        ttk.Label(visuals, text="TCP XY Spread").grid(row=0, column=0, sticky="w")
+        self.result_card_frame = tk.Frame(visuals, bg="#334155", bd=0, highlightthickness=0)
+        self.result_card_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        self.result_card_title = tk.Label(
+            self.result_card_frame,
+            textvariable=self.result_grade_var,
+            bg="#334155",
+            fg="white",
+            font=("TkDefaultFont", 11, "bold"),
+            anchor="w",
+            padx=12,
+            pady=6,
+        )
+        self.result_card_title.pack(fill="x")
+        self.result_card_detail = tk.Label(
+            self.result_card_frame,
+            textvariable=self.result_grade_detail_var,
+            bg="#334155",
+            fg="white",
+            justify="left",
+            wraplength=420,
+            anchor="w",
+            padx=12,
+            pady=8,
+        )
+        self.result_card_detail.pack(fill="x")
+        ttk.Label(visuals, text="TCP XY Spread").grid(row=1, column=0, sticky="w")
         self.tcp_xy_canvas = tk.Canvas(
             visuals,
             width=260,
@@ -135,8 +162,8 @@ class HandEyeCalibrationGuiApp(CalibrationViewerBase):
             highlightthickness=1,
             highlightbackground="#334155",
         )
-        self.tcp_xy_canvas.grid(row=1, column=0, sticky="ew", pady=(4, 10))
-        ttk.Label(visuals, text="Board Distance Samples").grid(row=2, column=0, sticky="w")
+        self.tcp_xy_canvas.grid(row=2, column=0, sticky="ew", pady=(4, 10))
+        ttk.Label(visuals, text="Board Distance Samples").grid(row=3, column=0, sticky="w")
         self.distance_canvas = tk.Canvas(
             visuals,
             width=260,
@@ -145,7 +172,7 @@ class HandEyeCalibrationGuiApp(CalibrationViewerBase):
             highlightthickness=1,
             highlightbackground="#334155",
         )
-        self.distance_canvas.grid(row=3, column=0, sticky="ew")
+        self.distance_canvas.grid(row=4, column=0, sticky="ew")
 
     def on_robot_polled(self) -> None:
         self.capture_hint_var.set(
@@ -325,8 +352,40 @@ class HandEyeCalibrationGuiApp(CalibrationViewerBase):
             self.consistency_var.set(" | ".join(lines))
         else:
             self.consistency_var.set("No method scores yet.")
+        self._refresh_result_card()
         self._draw_tcp_xy_canvas()
         self._draw_distance_canvas()
+
+    def _refresh_result_card(self) -> None:
+        if not self.last_results:
+            self._set_result_card(
+                title="Pending",
+                detail="Run calibration to score the current hand-eye result.",
+                bg="#334155",
+            )
+            return
+        best = choose_best_handeye_result(self.last_results)
+        if best.translation_std_m <= 0.008 and best.rotation_mean_deg <= 1.5:
+            title = "Good"
+            bg = "#166534"
+        elif best.translation_std_m <= 0.015 and best.rotation_mean_deg <= 3.0:
+            title = "Fair"
+            bg = "#a16207"
+        else:
+            title = "Poor"
+            bg = "#991b1b"
+        detail = (
+            f"{best.method_name}: translation_std={best.translation_std_m:.4f} m, "
+            f"rotation_mean={best.rotation_mean_deg:.2f} deg"
+        )
+        self._set_result_card(title=title, detail=detail, bg=bg)
+
+    def _set_result_card(self, *, title: str, detail: str, bg: str) -> None:
+        self.result_grade_var.set(title)
+        self.result_grade_detail_var.set(detail)
+        self.result_card_frame.configure(bg=bg)
+        self.result_card_title.configure(bg=bg)
+        self.result_card_detail.configure(bg=bg)
 
     def _refresh_capture_light(self) -> None:
         ready = self.capture_hint_var.get().strip() == "Ready to capture."

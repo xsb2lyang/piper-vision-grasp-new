@@ -54,6 +54,8 @@ class HandEyeValidationGuiApp(CalibrationViewerBase):
         self.validation_summary_var = tk.StringVar(value="No validation samples yet.")
         self.current_delta_var = tk.StringVar(value="Need a reference sample to compare drift.")
         self.board_pose_vars = [tk.StringVar(value="--") for _ in range(6)]
+        self.validation_grade_var = tk.StringVar(value="Pending")
+        self.validation_grade_detail_var = tk.StringVar(value="Capture validation samples to score stability.")
 
         super().__init__(
             root,
@@ -103,7 +105,32 @@ class HandEyeValidationGuiApp(CalibrationViewerBase):
         visuals = ttk.LabelFrame(parent, text="Validation Visuals", padding=10)
         visuals.grid(row=6, column=0, sticky="nsew")
         visuals.columnconfigure(0, weight=1)
-        ttk.Label(visuals, text="Board XY In Base Frame").grid(row=0, column=0, sticky="w")
+        self.validation_card_frame = tk.Frame(visuals, bg="#334155", bd=0, highlightthickness=0)
+        self.validation_card_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        self.validation_card_title = tk.Label(
+            self.validation_card_frame,
+            textvariable=self.validation_grade_var,
+            bg="#334155",
+            fg="white",
+            font=("TkDefaultFont", 11, "bold"),
+            anchor="w",
+            padx=12,
+            pady=6,
+        )
+        self.validation_card_title.pack(fill="x")
+        self.validation_card_detail = tk.Label(
+            self.validation_card_frame,
+            textvariable=self.validation_grade_detail_var,
+            bg="#334155",
+            fg="white",
+            justify="left",
+            wraplength=420,
+            anchor="w",
+            padx=12,
+            pady=8,
+        )
+        self.validation_card_detail.pack(fill="x")
+        ttk.Label(visuals, text="Board XY In Base Frame").grid(row=1, column=0, sticky="w")
         self.board_xy_canvas = tk.Canvas(
             visuals,
             width=260,
@@ -112,8 +139,8 @@ class HandEyeValidationGuiApp(CalibrationViewerBase):
             highlightthickness=1,
             highlightbackground="#334155",
         )
-        self.board_xy_canvas.grid(row=1, column=0, sticky="ew", pady=(4, 10))
-        ttk.Label(visuals, text="Board Z Samples").grid(row=2, column=0, sticky="w")
+        self.board_xy_canvas.grid(row=2, column=0, sticky="ew", pady=(4, 10))
+        ttk.Label(visuals, text="Board Z Samples").grid(row=3, column=0, sticky="w")
         self.board_z_canvas = tk.Canvas(
             visuals,
             width=260,
@@ -122,7 +149,7 @@ class HandEyeValidationGuiApp(CalibrationViewerBase):
             highlightthickness=1,
             highlightbackground="#334155",
         )
-        self.board_z_canvas.grid(row=3, column=0, sticky="ew")
+        self.board_z_canvas.grid(row=4, column=0, sticky="ew")
 
     def _build_board_pose_panel(self, parent: ttk.Frame, row: int) -> None:
         frame = ttk.LabelFrame(parent, text="Current T_base_board", padding=10)
@@ -236,8 +263,40 @@ class HandEyeValidationGuiApp(CalibrationViewerBase):
             )
         else:
             self.validation_summary_var.set("No validation samples yet.")
+        self._refresh_validation_card(summary)
         self._draw_board_xy_canvas()
         self._draw_board_z_canvas()
+
+    def _refresh_validation_card(self, summary) -> None:
+        if summary.sample_count == 0:
+            self._set_validation_card(
+                title="Pending",
+                detail="Capture validation samples to score stability.",
+                bg="#334155",
+            )
+            return
+        if summary.translation_std_m <= 0.008 and summary.rotation_mean_deg <= 1.5 and summary.rotation_max_deg <= 3.0:
+            title = "Good"
+            bg = "#166534"
+        elif summary.translation_std_m <= 0.015 and summary.rotation_mean_deg <= 3.0 and summary.rotation_max_deg <= 6.0:
+            title = "Fair"
+            bg = "#a16207"
+        else:
+            title = "Poor"
+            bg = "#991b1b"
+        detail = (
+            f"translation_std={summary.translation_std_m:.4f} m, "
+            f"rotation_mean={summary.rotation_mean_deg:.2f} deg, "
+            f"rotation_max={summary.rotation_max_deg:.2f} deg"
+        )
+        self._set_validation_card(title=title, detail=detail, bg=bg)
+
+    def _set_validation_card(self, *, title: str, detail: str, bg: str) -> None:
+        self.validation_grade_var.set(title)
+        self.validation_grade_detail_var.set(detail)
+        self.validation_card_frame.configure(bg=bg)
+        self.validation_card_title.configure(bg=bg)
+        self.validation_card_detail.configure(bg=bg)
 
     def _draw_board_xy_canvas(self) -> None:
         canvas = self.board_xy_canvas

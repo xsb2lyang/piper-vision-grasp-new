@@ -15,8 +15,8 @@ from piper_app.robot.client import PiperRobotClient
 from piper_app.robot.factory import PiperConnectionConfig
 
 DEFAULT_POLL_INTERVAL_S = 0.2
-VIEWER_WIDTH = 720
-VIEWER_HEIGHT = 360
+DEFAULT_VIEWER_WIDTH = 720
+DEFAULT_VIEWER_HEIGHT = 360
 
 
 class CalibrationViewerBase:
@@ -30,11 +30,13 @@ class CalibrationViewerBase:
         show_depth: bool,
         note_text: str,
         geometry: str = "1620x960",
+        left_scrollable: bool = True,
     ):
         self.root = root
         self.args = args
         self.use_robot = bool(use_robot)
         self.show_depth = bool(show_depth)
+        self.left_scrollable = bool(left_scrollable)
         self.root.title(title)
         self.root.geometry(geometry)
         self.root.minsize(1320, 820)
@@ -89,6 +91,8 @@ class CalibrationViewerBase:
         self._color_view_info: Optional[dict[str, int]] = None
         self._depth_view_info: Optional[dict[str, int]] = None
         self._note_text = note_text
+        self._left_scroll_canvas: Optional[tk.Canvas] = None
+        self._left_scroll_window_id: Optional[int] = None
 
         self._build_base_vars()
         self._build_layout()
@@ -138,9 +142,33 @@ class CalibrationViewerBase:
         self.outer.rowconfigure(0, weight=1)
         self.outer.rowconfigure(1, weight=0)
 
-        self.left_column = ttk.Frame(self.outer)
-        self.left_column.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        self.left_column.columnconfigure(0, weight=1)
+        left_host = ttk.Frame(self.outer)
+        left_host.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left_host.columnconfigure(0, weight=1)
+        left_host.rowconfigure(0, weight=1)
+
+        if self.left_scrollable:
+            self._left_scroll_canvas = tk.Canvas(left_host, highlightthickness=0, bd=0)
+            scrollbar = ttk.Scrollbar(left_host, orient="vertical", command=self._left_scroll_canvas.yview)
+            self._left_scroll_canvas.configure(yscrollcommand=scrollbar.set)
+            self._left_scroll_canvas.grid(row=0, column=0, sticky="nsew")
+            scrollbar.grid(row=0, column=1, sticky="ns")
+
+            self.left_column = ttk.Frame(self._left_scroll_canvas)
+            self.left_column.columnconfigure(0, weight=1)
+            self._left_scroll_window_id = self._left_scroll_canvas.create_window(
+                (0, 0),
+                window=self.left_column,
+                anchor="nw",
+            )
+            self.left_column.bind("<Configure>", self._on_left_frame_configure)
+            self._left_scroll_canvas.bind("<Configure>", self._on_left_canvas_configure)
+            self._left_scroll_canvas.bind("<Enter>", self._bind_left_mousewheel)
+            self._left_scroll_canvas.bind("<Leave>", self._unbind_left_mousewheel)
+        else:
+            self.left_column = ttk.Frame(left_host)
+            self.left_column.grid(row=0, column=0, sticky="nsew")
+            self.left_column.columnconfigure(0, weight=1)
 
         self.right_column = ttk.Frame(self.outer)
         self.right_column.grid(row=0, column=1, sticky="nsew")
@@ -157,7 +185,7 @@ class CalibrationViewerBase:
     def build_note_panel(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="Notes", padding=10)
         frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        ttk.Label(frame, text=self._note_text, wraplength=1280, justify="left").grid(sticky="w")
+        ttk.Label(frame, text=self._note_text, wraplength=1500, justify="left").grid(sticky="w")
 
     def build_robot_connection_panel(self, parent: ttk.Frame, row: int, mode_label: str) -> None:
         frame = ttk.LabelFrame(parent, text="Connection", padding=10)
@@ -279,31 +307,33 @@ class CalibrationViewerBase:
 
         self.color_canvas = tk.Canvas(
             frame,
-            width=VIEWER_WIDTH,
-            height=VIEWER_HEIGHT,
+            width=DEFAULT_VIEWER_WIDTH,
+            height=DEFAULT_VIEWER_HEIGHT,
             bg="black",
             highlightthickness=1,
             highlightbackground="#4b5563",
         )
         self.color_canvas.grid(row=1, column=0, sticky="nsew", pady=(0, 8 if self.show_depth else 0))
-        self.color_canvas.create_text(VIEWER_WIDTH / 2, VIEWER_HEIGHT / 2, text="No color frame", fill="white")
+        self._draw_canvas_placeholder(self.color_canvas, "No color frame")
         self.color_canvas.bind("<Motion>", lambda event: self._on_canvas_motion("color", event))
         self.color_canvas.bind("<Leave>", self._on_canvas_leave)
+        self.color_canvas.bind("<Configure>", self._on_display_canvas_resize)
 
         self.depth_canvas = None
         if self.show_depth:
             self.depth_canvas = tk.Canvas(
                 frame,
-                width=VIEWER_WIDTH,
-                height=VIEWER_HEIGHT,
+                width=DEFAULT_VIEWER_WIDTH,
+                height=DEFAULT_VIEWER_HEIGHT,
                 bg="black",
                 highlightthickness=1,
                 highlightbackground="#4b5563",
             )
             self.depth_canvas.grid(row=2, column=0, sticky="nsew")
-            self.depth_canvas.create_text(VIEWER_WIDTH / 2, VIEWER_HEIGHT / 2, text="No depth frame", fill="white")
+            self._draw_canvas_placeholder(self.depth_canvas, "No depth frame")
             self.depth_canvas.bind("<Motion>", lambda event: self._on_canvas_motion("depth", event))
             self.depth_canvas.bind("<Leave>", self._on_canvas_leave)
+            self.depth_canvas.bind("<Configure>", self._on_display_canvas_resize)
 
     def start(self) -> None:
         self.root.after(150, lambda: self.run_action(self._connect_resources))
@@ -407,11 +437,9 @@ class CalibrationViewerBase:
         self._depth_photo = None
         self._color_view_info = None
         self._depth_view_info = None
-        self.color_canvas.delete("all")
-        self.color_canvas.create_text(VIEWER_WIDTH / 2, VIEWER_HEIGHT / 2, text="No color frame", fill="white")
+        self._draw_canvas_placeholder(self.color_canvas, "No color frame")
         if self.depth_canvas is not None:
-            self.depth_canvas.delete("all")
-            self.depth_canvas.create_text(VIEWER_WIDTH / 2, VIEWER_HEIGHT / 2, text="No depth frame", fill="white")
+            self._draw_canvas_placeholder(self.depth_canvas, "No depth frame")
 
     def poll_now(self) -> None:
         self.run_action(self._poll_data)
@@ -464,20 +492,22 @@ class CalibrationViewerBase:
     def _render_canvas_image(self, canvas: tk.Canvas, image_rgb):
         canvas.delete("all")
         pil_image = Image.fromarray(image_rgb)
-        display_image, view_info = self._fit_image(pil_image)
+        display_image, view_info = self._fit_image(canvas, pil_image)
         photo = ImageTk.PhotoImage(display_image)
-        canvas.create_image(VIEWER_WIDTH / 2, VIEWER_HEIGHT / 2, image=photo, anchor="center", tags=("frame",))
+        canvas_width, canvas_height = self._canvas_display_size(canvas)
+        canvas.create_image(canvas_width / 2, canvas_height / 2, image=photo, anchor="center", tags=("frame",))
         return photo, view_info
 
-    def _fit_image(self, image: Image.Image):
+    def _fit_image(self, canvas: tk.Canvas, image: Image.Image):
         src_width, src_height = image.size
-        scale = min(VIEWER_WIDTH / src_width, VIEWER_HEIGHT / src_height)
+        canvas_width, canvas_height = self._canvas_display_size(canvas)
+        scale = min(canvas_width / src_width, canvas_height / src_height)
         disp_width = max(1, int(round(src_width * scale)))
         disp_height = max(1, int(round(src_height * scale)))
         resized = image.resize((disp_width, disp_height), Image.Resampling.BILINEAR)
-        offset_x = (VIEWER_WIDTH - disp_width) // 2
-        offset_y = (VIEWER_HEIGHT - disp_height) // 2
-        background = Image.new("RGB", (VIEWER_WIDTH, VIEWER_HEIGHT), color=(0, 0, 0))
+        offset_x = (canvas_width - disp_width) // 2
+        offset_y = (canvas_height - disp_height) // 2
+        background = Image.new("RGB", (canvas_width, canvas_height), color=(0, 0, 0))
         background.paste(resized, (offset_x, offset_y))
         return background, {
             "src_width": src_width,
@@ -487,6 +517,60 @@ class CalibrationViewerBase:
             "offset_x": offset_x,
             "offset_y": offset_y,
         }
+
+    def _canvas_display_size(self, canvas: tk.Canvas) -> tuple[int, int]:
+        width = max(200, int(canvas.winfo_width() or DEFAULT_VIEWER_WIDTH))
+        height = max(140, int(canvas.winfo_height() or DEFAULT_VIEWER_HEIGHT))
+        return width, height
+
+    def _draw_canvas_placeholder(self, canvas: tk.Canvas, text: str) -> None:
+        canvas.delete("all")
+        width, height = self._canvas_display_size(canvas)
+        canvas.create_text(width / 2, height / 2, text=text, fill="white")
+
+    def _on_display_canvas_resize(self, _event) -> None:
+        if self._camera_bundle is None:
+            return
+        color_rgb, depth_rgb = self.get_display_images(self._camera_bundle)
+        self._color_photo, self._color_view_info = self._render_canvas_image(self.color_canvas, color_rgb)
+        if self.show_depth and self.depth_canvas is not None and depth_rgb is not None:
+            self._depth_photo, self._depth_view_info = self._render_canvas_image(self.depth_canvas, depth_rgb)
+        self._draw_hover_overlay()
+
+    def _on_left_frame_configure(self, _event) -> None:
+        if self._left_scroll_canvas is None:
+            return
+        self._left_scroll_canvas.configure(scrollregion=self._left_scroll_canvas.bbox("all"))
+
+    def _on_left_canvas_configure(self, event) -> None:
+        if self._left_scroll_canvas is None or self._left_scroll_window_id is None:
+            return
+        self._left_scroll_canvas.itemconfigure(self._left_scroll_window_id, width=event.width)
+
+    def _bind_left_mousewheel(self, _event) -> None:
+        if self._left_scroll_canvas is None:
+            return
+        self._left_scroll_canvas.bind_all("<MouseWheel>", self._on_left_mousewheel)
+        self._left_scroll_canvas.bind_all("<Button-4>", self._on_left_mousewheel)
+        self._left_scroll_canvas.bind_all("<Button-5>", self._on_left_mousewheel)
+
+    def _unbind_left_mousewheel(self, _event) -> None:
+        if self._left_scroll_canvas is None:
+            return
+        self._left_scroll_canvas.unbind_all("<MouseWheel>")
+        self._left_scroll_canvas.unbind_all("<Button-4>")
+        self._left_scroll_canvas.unbind_all("<Button-5>")
+
+    def _on_left_mousewheel(self, event) -> None:
+        if self._left_scroll_canvas is None:
+            return
+        if hasattr(event, "delta") and event.delta:
+            direction = -1 if event.delta > 0 else 1
+        elif getattr(event, "num", None) == 4:
+            direction = -1
+        else:
+            direction = 1
+        self._left_scroll_canvas.yview_scroll(direction, "units")
 
     def _on_canvas_motion(self, viewer_name: str, event) -> None:
         view_info = self._color_view_info if viewer_name == "color" else self._depth_view_info
