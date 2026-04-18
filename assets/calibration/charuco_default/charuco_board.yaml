@@ -1,0 +1,5 @@
+squares_x: 6
+squares_y: 8
+square_length_m: 0.03
+marker_length_m: 0.022
+dictionary: DICT_4X4_50

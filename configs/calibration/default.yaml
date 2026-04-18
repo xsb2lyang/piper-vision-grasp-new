@@ -1,0 +1,17 @@
+board_config_path: assets/calibration/charuco_default/charuco_board.yaml
+results_dir: configs/calibration
+session_base_dir: configs/calibration/sessions
+intrinsics_min_corners: 12
+intrinsics_min_samples: 12
+intrinsics_far_area_ratio: 0.05
+intrinsics_near_area_ratio: 0.60
+intrinsics_duplicate_threshold: 0.08
+handeye_min_corners: 12
+handeye_min_samples: 8
+handeye_near_z_m: 0.18
+handeye_far_z_m: 0.70
+handeye_min_translation_delta_m: 0.03
+handeye_min_rotation_delta_deg: 8.0
+default_method_names:
+  - Tsai
+  - Park

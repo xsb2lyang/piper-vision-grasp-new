@@ -22,3 +22,8 @@ coverage.xml
 *.swo
 src/*.egg-info/
 src/**/*.egg-info/
+configs/calibration/sessions/
+configs/calibration/camera_intrinsics.yaml
+configs/calibration/handeye_tsai.yaml
+configs/calibration/handeye_park.yaml
+configs/calibration/handeye_active.yaml

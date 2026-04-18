@@ -10,12 +10,16 @@ readme = "README.md"
 requires-python = ">=3.10,<3.11"
 dependencies = [
     "numpy>=2.0",
+    "opencv-contrib-python-headless>=4.13.0.92",
     "Pillow>=12.0",
     "PyYAML>=6.0",
     "pyrealsense2==2.56.5.9235",
 ]
 
 [project.scripts]
+piper-calibrate-handeye = "piper_app.cli.calibrate_handeye:main"
+piper-calibrate-intrinsics = "piper_app.cli.calibrate_intrinsics:main"
+piper-validate-handeye = "piper_app.cli.validate_handeye:main"
 piper-drag-monitor-gui = "piper_app.cli.drag_monitor_gui:main"
 piper-teleop-gui = "piper_app.cli.teleop_tcp_gui:main"
 piper-teleop-keyboard = "piper_app.cli.teleop_tcp_keyboard:main"

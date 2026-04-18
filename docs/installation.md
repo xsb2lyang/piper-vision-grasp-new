@@ -92,6 +92,7 @@ Check RealSense Python bindings:
 
 ```bash
 uv pip show --python .venv/bin/python pyrealsense2
+uv pip show --python .venv/bin/python opencv-contrib-python-headless
 ```
 
 Check the camera:
@@ -116,3 +117,25 @@ Useful options:
 ./scripts/run_monitor.sh --depth-min-m 0.05 --depth-max-m 0.50
 ./scripts/run_monitor.sh --no-camera
 ```
+
+## 6. Run Calibration Tools
+
+Camera intrinsics:
+
+```bash
+./scripts/run_calibrate_intrinsics.sh
+```
+
+Hand-eye calibration:
+
+```bash
+./scripts/run_calibrate_handeye.sh
+```
+
+Hand-eye validation:
+
+```bash
+./scripts/run_validate_handeye.sh
+```
+
+See [docs/handeye.md](handeye.md) for the calibration workflow and output files.
