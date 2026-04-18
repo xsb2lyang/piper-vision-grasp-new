@@ -23,4 +23,5 @@ def load_project_defaults() -> Dict[str, Dict[str, Any]]:
     return {
         "robot": load_yaml_config("configs/robot/piper_default.yaml"),
         "teleop": load_yaml_config("configs/teleop/default.yaml"),
+        "camera": load_yaml_config("configs/camera/d405_default.yaml"),
     }

@@ -11,14 +11,23 @@ Recommended setup:
 ./scripts/setup_env.sh
 ```
 
+This project now uses `uv` as the recommended Python environment manager and installs into the repo-local `.venv`.
+
+If you are migrating from an older `.venv`, rebuild it with:
+
+```bash
+./scripts/setup_env.sh --recreate
+```
+
 Run teleop:
 
 ```bash
 ./scripts/run_gui.sh
 ./scripts/run_keyboard.sh
+./scripts/run_monitor.sh
 ```
 
 More details:
 
-- [docs/setup.md](docs/setup.md)
+- [docs/installation.md](docs/installation.md)
 - [docs/teleop.md](docs/teleop.md)

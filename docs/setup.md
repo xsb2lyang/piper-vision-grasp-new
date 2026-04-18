@@ -1,19 +1,10 @@
-# Setup
+# Setup Redirect
 
-1. Create or reuse the workspace virtual environment.
-2. Install the vendored SDK first.
-3. Install the application layer second.
+The main installation guide now lives at [installation.md](installation.md).
 
-```bash
-./scripts/setup_env.sh
-```
+Use that document for:
 
-Manual equivalent:
-
-```bash
-.venv/bin/python -m pip install setuptools wheel PyYAML
-.venv/bin/python -m pip install --no-build-isolation -e third_party/pyAgxArm
-.venv/bin/python -m pip install --no-build-isolation -e .
-```
-
-This ordering matters because `piper_app` imports `pyAgxArm` as a normal installed package.
+- Python 3.10 environment setup
+- `.venv` recreation
+- `pyrealsense2` installation
+- RealSense system dependency checks

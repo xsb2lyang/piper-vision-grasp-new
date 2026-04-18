@@ -19,6 +19,16 @@ Dry-run examples:
 ./scripts/run_keyboard.sh --dry-run
 ```
 
+Read-only drag monitor with D405 camera:
+
+```bash
+./scripts/run_monitor.sh
+```
+
+Installation and environment notes:
+
+- [docs/installation.md](installation.md)
+
 Gripper zeroing in GUI:
 
 1. Click `Release Driver`

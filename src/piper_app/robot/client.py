@@ -50,14 +50,17 @@ class PiperRobotClient:
             f"Timed out waiting for firmware on {self.config.channel}. Check CAN and robot power."
         )
 
-    def connect(self) -> None:
+    def connect(self, configure_robot: bool = True, init_gripper: bool = True) -> None:
         firmware_kind, firmware_info = self.probe_firmware()
         cfg = build_robot_config(self.config, firmware=firmware_kind)
         robot = AgxArmFactory.create_arm(cfg)
-        gripper = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+        gripper = None
+        if init_gripper:
+            gripper = robot.init_effector(robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
         robot.connect()
-        robot.set_speed_percent(int(self.config.speed_percent))
-        robot.set_tcp_offset(self.config.tcp_offset)
+        if configure_robot:
+            robot.set_speed_percent(int(self.config.speed_percent))
+            robot.set_tcp_offset(self.config.tcp_offset)
         time.sleep(0.2)
 
         self._robot = robot
@@ -93,6 +96,12 @@ class PiperRobotClient:
         if self._robot is None:
             return None
         measured = self._robot.get_tcp_pose()
+        return None if measured is None else measured.msg
+
+    def get_joint_angles(self) -> Optional[list[float]]:
+        if self._robot is None:
+            return None
+        measured = self._robot.get_joint_angles()
         return None if measured is None else measured.msg
 
     def get_arm_status(self):

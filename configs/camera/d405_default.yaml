@@ -1,0 +1,8 @@
+enabled: true
+serial: auto
+width: 640
+height: 480
+fps: 30
+depth_min_m: 0.05
+depth_max_m: 0.50
+update_interval_ms: 100
