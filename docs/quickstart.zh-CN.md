@@ -2,6 +2,10 @@
 
 这份文档给出一条从全新 clone 到跑通当前抓取 demo 的最短路径。
 
+如果你是第一次接触这个仓库，建议先读：
+
+- [onboarding.zh-CN.md](onboarding.zh-CN.md)
+
 ## 目标
 
 按本文档操作后，你应该可以完成：

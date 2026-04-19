@@ -107,6 +107,8 @@
 
 ## 文档
 
+- [第一次上手指南](docs/onboarding.zh-CN.md)
+- [First-Time Onboarding](docs/onboarding.md)
 - [快速上手流程](docs/quickstart.zh-CN.md)
 - [Quick Start Workflow](docs/quickstart.md)
 - [安装说明](docs/installation.md)

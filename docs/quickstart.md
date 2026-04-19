@@ -2,6 +2,10 @@
 
 This guide is the shortest path from a fresh clone to the current end-to-end demo workflow in this repository.
 
+If this is your first time reading the project, start with:
+
+- [onboarding.md](onboarding.md)
+
 ## Goal
 
 After following this document, you should be able to:
