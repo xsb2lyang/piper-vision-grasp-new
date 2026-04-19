@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional
 
+import numpy as np
 from PIL import Image, ImageDraw
 
 from piper_app.camera.d405 import D405FrameBundle
@@ -193,7 +194,7 @@ class YoloTargetPickDemoGuiApp(ClickPickDemoGuiApp):
             text_bbox = draw.textbbox((text_x, text_y), label_text)
             draw.rectangle(text_bbox, fill="#22c55e")
             draw.text((text_x, text_y), label_text, fill="black")
-        return image
+        return np.asarray(image)
 
     def _select_target_from_source_pixel(
         self,
