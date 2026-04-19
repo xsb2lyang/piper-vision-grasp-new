@@ -107,12 +107,23 @@ Capture and save:
 
 ## Documentation
 
+- [Quick Start Workflow](docs/quickstart.md)
+- [快速上手流程](docs/quickstart.zh-CN.md)
 - [Installation](docs/installation.md)
 - [Teleoperation](docs/teleop.md)
 - [Hand-Eye Calibration](docs/handeye.md)
 - [Keypoint Capture](docs/keypoints.md)
 - [TCP Offset Estimation](docs/tcp_offset.md)
 - [Click Pick Demo](docs/pick_demo.md)
+
+## Printable Calibration Board
+
+The default ChArUco board is already included in the repository for direct printing and reuse:
+
+- [assets/calibration/charuco_default/charuco_board.pdf](assets/calibration/charuco_default/charuco_board.pdf)
+- [assets/calibration/charuco_default/charuco_board.png](assets/calibration/charuco_default/charuco_board.png)
+- [assets/calibration/charuco_default/charuco_board.yaml](assets/calibration/charuco_default/charuco_board.yaml)
+- [assets/calibration/charuco_default/README.md](assets/calibration/charuco_default/README.md)
 
 ## Project Notes
 

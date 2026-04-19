@@ -10,6 +10,12 @@ The default ChArUco board is read from:
 assets/calibration/charuco_default/charuco_board.yaml
 ```
 
+Printable assets already included in the repo:
+
+- `assets/calibration/charuco_default/charuco_board.pdf`
+- `assets/calibration/charuco_default/charuco_board.png`
+- `assets/calibration/charuco_default/README.md`
+
 Expected board spec:
 
 - `6 x 8`

@@ -107,12 +107,23 @@
 
 ## 文档
 
+- [快速上手流程](docs/quickstart.zh-CN.md)
+- [Quick Start Workflow](docs/quickstart.md)
 - [安装说明](docs/installation.md)
 - [遥操作](docs/teleop.md)
 - [手眼标定](docs/handeye.md)
 - [关键位采集](docs/keypoints.md)
 - [TCP Offset 估计](docs/tcp_offset.md)
 - [点击抓取 Demo](docs/pick_demo.md)
+
+## 可直接打印复用的标定板
+
+仓库里已经直接包含默认 ChArUco 标定板资产，别人 clone 后可以直接打印：
+
+- [assets/calibration/charuco_default/charuco_board.pdf](assets/calibration/charuco_default/charuco_board.pdf)
+- [assets/calibration/charuco_default/charuco_board.png](assets/calibration/charuco_default/charuco_board.png)
+- [assets/calibration/charuco_default/charuco_board.yaml](assets/calibration/charuco_default/charuco_board.yaml)
+- [assets/calibration/charuco_default/README.md](assets/calibration/charuco_default/README.md)
 
 ## 项目说明
 
