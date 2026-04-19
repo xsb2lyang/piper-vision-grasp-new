@@ -1,6 +1,8 @@
 # Installation
 
-This repository uses a vendored `pyAgxArm` SDK plus our own application layer. The official recommended environment for this project is **uv + Python 3.10**.
+This document covers the recommended setup for **piper-vision-grasp-new**.
+
+The repository uses a vendored `pyAgxArm` SDK plus our own application layer. The official recommended environment for this project is **uv + Python 3.10**.
 
 ## 1. System Dependencies
 

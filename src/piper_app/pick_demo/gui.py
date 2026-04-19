@@ -361,8 +361,6 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
 
         detection = self._pick_detection_at_pixel(src_point) if self._yolo_enabled else None
         if detection is not None:
-            x1, y1, x2, y2 = detection.bbox_xyxy
-            src_point = ((x1 + x2) // 2, (y1 + y2) // 2)
             self._selected_detection = detection
             self._selected_detection_text = f"{detection.label} @ {detection.confidence:.2f} box={detection.bbox_xyxy}"
         else:
@@ -462,8 +460,8 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
             tcp_pose, timeout=timeout
         )
         if not ok:
-            if linear and pose_name == "drop_pose":
-                self._last_event_text = "Linear move to drop_pose timed out, retrying with move_p."
+            if linear and pose_name in {"grasp", "drop_pose"}:
+                self._last_event_text = f"Linear move to {pose_name} timed out, retrying with move_p."
                 self._request_ui_refresh()
                 ok = self.client.move_tcp_pose(tcp_pose, timeout=timeout)
             if not ok:
@@ -493,6 +491,28 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
         if gs is not None:
             self._gripper_value_m = float(gs.msg.value)
         self._request_ui_refresh()
+
+    def _close_gripper_gradually(self, width_m: float, force_n: float) -> None:
+        workspace = self._require_workspace()
+        steps = max(1, int(workspace.task_defaults.get("gripper_close_steps", 1)))
+        step_pause_s = max(0.0, float(workspace.task_defaults.get("gripper_close_step_pause_s", 0.0)))
+        current_width = self._gripper_value_m
+        if current_width is None or steps <= 1:
+            self._set_gripper_width(width_m, force_n)
+            return
+        target_width = min(max(0.0, float(width_m)), max(0.001, float(self._gripper_max_range_m)))
+        if target_width >= current_width - 0.001:
+            self._set_gripper_width(target_width, force_n)
+            return
+        widths = np.linspace(current_width, target_width, steps + 1, dtype=np.float64)[1:]
+        for index, intermediate_width in enumerate(widths, start=1):
+            self._last_event_text = (
+                f"Step 5/8: close gripper ({index}/{len(widths)}) to {float(intermediate_width):.4f} m."
+            )
+            self._request_ui_refresh()
+            self._set_gripper_width(float(intermediate_width), force_n)
+            if index < len(widths) and step_pause_s > 0.0:
+                time.sleep(step_pause_s)
 
     def _resolved_open_gripper_width(self, workspace: PickDemoWorkspace) -> float:
         configured = float(workspace.task_defaults["gripper_open_width_m"])
@@ -575,12 +595,13 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
         self._last_event_text = "Step 3/8: move to pregrasp."
         self._request_ui_refresh()
         self._move_to_tcp_pose("pregrasp", self.selected_plan.pregrasp_pose, linear=False)
-        self._last_event_text = "Step 4/8: descend to grasp."
+        grasp_linear_move = bool(workspace.task_defaults.get("grasp_linear_move", False))
+        self._last_event_text = "Step 4/8: descend to grasp." if grasp_linear_move else "Step 4/8: move to grasp."
         self._request_ui_refresh()
-        self._move_to_tcp_pose("grasp", self.selected_plan.grasp_pose, linear=True)
+        self._move_to_tcp_pose("grasp", self.selected_plan.grasp_pose, linear=grasp_linear_move)
         self._last_event_text = "Step 5/8: close gripper."
         self._request_ui_refresh()
-        self._set_gripper_width(close_width, force_n)
+        self._close_gripper_gradually(close_width, force_n)
         self._last_event_text = "Step 6/8: lift object."
         self._request_ui_refresh()
         self._move_to_tcp_pose("lift", self.selected_plan.lift_pose, linear=True)

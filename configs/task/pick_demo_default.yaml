@@ -7,15 +7,18 @@ point_names:
   - inspect
 default_note: ""
 task_defaults:
-  pick_point_offset_m: [-0.15, 0.0, 0.10]
+  pick_point_offset_m: [-0.09, 0.0, 0.18]
   pregrasp_offset_m: [0.0, 0.0, 0.08]
   descend_distance_m: 0.08
+  grasp_linear_move: false
   lift_distance_m: 0.10
   drop_offset_m: [0.0, 0.0, 0.08]
   gripper_open_width_m: 0.0
   gripper_close_width_m: 0.0
   gripper_force_n: 1.0
   gripper_settle_s: 0.8
+  gripper_close_steps: 4
+  gripper_close_step_pause_s: 0.15
   move_timeout_s: 15.0
   place_timeout_s: 15.0
   place_linear_move: false

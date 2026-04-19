@@ -3,11 +3,20 @@ requires = ["setuptools>=65.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "piper-app"
+name = "piper-vision-grasp-new"
 version = "0.1.0"
-description = "Application-layer tooling for Piper robotic arms built on top of vendored pyAgxArm."
+description = "Eye-in-hand vision grasping workspace for Piper robots built on top of vendored pyAgxArm and YOLO."
 readme = "README.md"
 requires-python = ">=3.10,<3.11"
+keywords = ["piper", "robotics", "vision", "grasping", "realsense", "yolo"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Scientific/Engineering :: Robotics",
+]
 dependencies = [
     "matplotlib>=3.4",
     "numpy>=2.0",
@@ -27,6 +36,11 @@ dependencies = [
     "ultralytics>=8.4.39",
     "ultralytics-thop>=2.0.18",
 ]
+
+[project.urls]
+Homepage = "https://github.com/xsb2lyang/piper-vision-grasp-new"
+Repository = "https://github.com/xsb2lyang/piper-vision-grasp-new"
+Issues = "https://github.com/xsb2lyang/piper-vision-grasp-new/issues"
 
 [project.scripts]
 piper-calibrate-handeye = "piper_app.cli.calibrate_handeye:main"
