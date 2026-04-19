@@ -520,6 +520,20 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
             return float(self._gripper_max_range_m)
         return min(configured, float(self._gripper_max_range_m))
 
+    def _move_to_drop_approach_pose(self, workspace: PickDemoWorkspace) -> None:
+        staging_pose = workspace.extras.get("staging") or workspace.extras.get("drop_prepose")
+        if staging_pose is not None:
+            self._last_event_text = f"Using saved {staging_pose.name} as the drop approach pose."
+            self._request_ui_refresh()
+            self._move_to_joint_pose(staging_pose.name, staging_pose.joint_angles)
+            return
+        try:
+            self._move_to_tcp_pose("drop_prepose", self.selected_plan.drop_prepose, linear=False)
+        except RuntimeError:
+            self._last_event_text = "drop_prepose timed out, falling back to the saved drop_pose joint approach."
+            self._request_ui_refresh()
+            self._move_to_joint_pose("drop_pose_fallback", workspace.drop_pose.joint_angles)
+
     def move_home(self) -> None:
         workspace = self._require_workspace()
         if self.dry_run_var.get():
@@ -608,7 +622,7 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
         place_linear_move = bool(workspace.task_defaults.get("place_linear_move", False))
         self._last_event_text = "Step 7/10: move above drop pose."
         self._request_ui_refresh()
-        self._move_to_tcp_pose("drop_prepose", self.selected_plan.drop_prepose, linear=False)
+        self._move_to_drop_approach_pose(workspace)
         self._last_event_text = "Step 8/10: descend to drop pose." if place_linear_move else "Step 8/10: move to drop pose."
         self._request_ui_refresh()
         self._move_to_tcp_pose("drop_pose", self.selected_plan.drop_pose, linear=place_linear_move)
