@@ -89,6 +89,48 @@ def build_parser() -> argparse.ArgumentParser:
         help="GUI camera refresh interval in milliseconds.",
     )
     parser.add_argument(
+        "--yolo",
+        action=argparse.BooleanOptionalAction,
+        default=camera_defaults.get("yolo_enabled", False),
+        help="Enable YOLO11 detections in the click-pick camera view.",
+    )
+    parser.add_argument(
+        "--yolo-weights",
+        type=str,
+        default=camera_defaults.get("yolo_weights", "third_party/yolo/新松-检测/yolo11m.pt"),
+        help="Path to a YOLO11 weights file.",
+    )
+    parser.add_argument(
+        "--yolo-conf",
+        type=float,
+        default=camera_defaults.get("yolo_conf", 0.25),
+        help="YOLO confidence threshold.",
+    )
+    parser.add_argument(
+        "--yolo-iou",
+        type=float,
+        default=camera_defaults.get("yolo_iou", 0.45),
+        help="YOLO IoU threshold.",
+    )
+    parser.add_argument(
+        "--yolo-max-det",
+        type=int,
+        default=camera_defaults.get("yolo_max_det", 50),
+        help="Maximum number of detections per frame.",
+    )
+    parser.add_argument(
+        "--yolo-imgsz",
+        type=int,
+        default=camera_defaults.get("yolo_imgsz", 640),
+        help="YOLO inference image size.",
+    )
+    parser.add_argument(
+        "--yolo-device",
+        type=str,
+        default=camera_defaults.get("yolo_device", "auto"),
+        help="YOLO device string, for example auto, cpu, cuda:0, or 0.",
+    )
+    parser.add_argument(
         "--keypoints-path",
         type=str,
         default=str(repo_root() / task_defaults.get("output_path", "configs/task/pick_demo_points.yaml")),

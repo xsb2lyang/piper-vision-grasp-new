@@ -9,8 +9,10 @@ from typing import Optional
 
 import numpy as np
 
+from piper_app.camera.d405 import D405FrameBundle, D405PointQuery
 from piper_app.calibration.session import display_repo_path
 from piper_app.calibration.viewer_base import CalibrationViewerBase
+from piper_app.perception.yolo import YoloConfig, YoloDetection, YoloDetector, YoloPrediction
 from piper_app.pick_demo.task import (
     PickDemoWorkspace,
     PickPlan,
@@ -36,6 +38,25 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
         self._gripper_driver_error = False
         self._gripper_max_range_m = 0.03
         self._action_running = False
+        self._yolo_enabled = bool(getattr(args, "yolo", False))
+        self._yolo_detector = YoloDetector(
+            YoloConfig(
+                enabled=self._yolo_enabled,
+                weights_path=str(getattr(args, "yolo_weights", "third_party/yolo/新松-检测/yolo11m.pt")),
+                imgsz=int(getattr(args, "yolo_imgsz", 640)),
+                conf=float(getattr(args, "yolo_conf", 0.25)),
+                iou=float(getattr(args, "yolo_iou", 0.45)),
+                max_det=int(getattr(args, "yolo_max_det", 50)),
+                device=str(getattr(args, "yolo_device", "auto")),
+            )
+        )
+        self._live_prediction: Optional[YoloPrediction] = None
+        self._frozen_prediction: Optional[YoloPrediction] = None
+        self._frozen_bundle: Optional[D405FrameBundle] = None
+        self._paused = False
+        self._yolo_status_text = "Disabled"
+        self._selected_detection: Optional[YoloDetection] = None
+        self._selected_detection_text = "No detection selected."
 
         super().__init__(
             root,
@@ -92,7 +113,10 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
         self.config_path_var = tk.StringVar(value="")
         self.handeye_path_var = tk.StringVar(value="")
         self.observe_ready_var = tk.StringVar(value=self.observe_ready_text)
+        self.view_mode_var = tk.StringVar(value="Live")
+        self.yolo_status_var = tk.StringVar(value=self._yolo_status_text)
         self.selected_pixel_var = tk.StringVar(value="--")
+        self.selected_detection_var = tk.StringVar(value=self._selected_detection_text)
         self.selected_camera_point_var = tk.StringVar(value="--")
         self.selected_base_point_var = tk.StringVar(value="--")
         self.selected_warning_var = tk.StringVar(value=self.selected_warning_text)
@@ -115,7 +139,10 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
                 ("Workspace", self.config_path_var),
                 ("Hand-Eye", self.handeye_path_var),
                 ("Observe Readiness", self.observe_ready_var),
+                ("View Mode", self.view_mode_var),
+                ("YOLO", self.yolo_status_var),
                 ("Selected Pixel", self.selected_pixel_var),
+                ("Selected Detection", self.selected_detection_var),
                 ("Camera Point", self.selected_camera_point_var),
                 ("Base Point", self.selected_base_point_var),
                 ("Selection", self.selected_warning_var),
@@ -139,26 +166,35 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
         ttk.Button(frame, text="Reload Config", command=lambda: self.run_action(self.reload_workspace)).grid(
             row=0, column=0, sticky="ew", padx=(0, 6), pady=(0, 6)
         )
-        ttk.Button(frame, text="Move Home", command=lambda: self.run_background_action(self.move_home)).grid(
+        ttk.Button(frame, text="Pause / Freeze", command=self.toggle_pause).grid(
             row=0, column=1, sticky="ew", padx=(0, 6), pady=(0, 6)
         )
-        ttk.Button(frame, text="Move Observe", command=lambda: self.run_background_action(self.move_observe)).grid(
+        ttk.Button(frame, text="Move Home", command=lambda: self.run_background_action(self.move_home)).grid(
             row=0, column=2, sticky="ew", padx=(0, 6), pady=(0, 6)
         )
-        ttk.Button(frame, text="Open Gripper", command=lambda: self.run_background_action(self.open_gripper)).grid(
+        ttk.Button(frame, text="Move Observe", command=lambda: self.run_background_action(self.move_observe)).grid(
             row=0, column=3, sticky="ew", pady=(0, 6)
         )
 
-        ttk.Button(frame, text="Clear Target", command=self.clear_selection).grid(
+        ttk.Button(frame, text="Open Gripper", command=lambda: self.run_background_action(self.open_gripper)).grid(
             row=1, column=0, sticky="ew", padx=(0, 6)
         )
-        ttk.Button(frame, text="Close Gripper", command=lambda: self.run_background_action(self.close_gripper)).grid(
+        ttk.Button(frame, text="Clear Target", command=self.clear_selection).grid(
             row=1, column=1, sticky="ew", padx=(0, 6)
         )
-        ttk.Button(frame, text="Execute Pick", command=lambda: self.run_background_action(self.execute_pick_sequence)).grid(
+        ttk.Button(frame, text="Close Gripper", command=lambda: self.run_background_action(self.close_gripper)).grid(
             row=1, column=2, sticky="ew", padx=(0, 6)
         )
-        ttk.Checkbutton(frame, text="Dry-run", variable=self.dry_run_var).grid(row=1, column=3, sticky="e")
+        ttk.Button(frame, text="Execute Pick", command=lambda: self.run_background_action(self.execute_pick_sequence)).grid(
+            row=1, column=3, sticky="ew"
+        )
+        ttk.Label(
+            frame,
+            text="Flow: live detect -> pause frame -> click a detection box -> Execute Pick",
+            wraplength=520,
+            justify="left",
+        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(frame, text="Dry-run", variable=self.dry_run_var).grid(row=2, column=3, sticky="e", pady=(8, 0))
 
     def connect_robot(self) -> None:
         self.connection_var.set("Connecting...")
@@ -211,6 +247,8 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
 
     def refresh_custom_ui(self) -> None:
         self.observe_ready_var.set(self.observe_ready_text)
+        self.view_mode_var.set("Paused" if self._paused else "Live")
+        self.yolo_status_var.set(self._yolo_status_text)
         self.gripper_state_var.set(
             f"enabled={self._gripper_driver_enabled} homed={self._gripper_homing} error={self._gripper_driver_error}"
         )
@@ -219,6 +257,7 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
         self._update_selection_vars()
 
     def _update_selection_vars(self) -> None:
+        self.selected_detection_var.set(self._selected_detection_text)
         if self.selected_plan is None:
             self.selected_pixel_var.set("--")
             self.selected_camera_point_var.set("--")
@@ -243,6 +282,57 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
     def _on_canvas_click(self, event) -> None:
         viewer_name = "depth" if event.widget is self.depth_canvas else "color"
         self.select_target_from_canvas(viewer_name, event.x, event.y)
+
+    def toggle_pause(self) -> None:
+        self._paused = not self._paused
+        if self._paused:
+            self._frozen_bundle = self._camera_bundle
+            self._frozen_prediction = self._live_prediction
+            self._last_event_text = "Paused current frame. Click a YOLO box or a raw pixel."
+        else:
+            self._frozen_bundle = None
+            self._frozen_prediction = None
+            self._last_event_text = "Returned to live camera view."
+        self.refresh_ui()
+
+    def on_camera_bundle(self, bundle: D405FrameBundle) -> None:
+        if self._yolo_enabled and not self._paused:
+            try:
+                self._live_prediction = self._yolo_detector.predict(bundle.color_rgb)
+                self._yolo_status_text = (
+                    f"Running ({self._live_prediction.device_label}) | {len(self._live_prediction.detections)} detections"
+                )
+            except Exception as exc:
+                self._yolo_status_text = f"Error: {type(exc).__name__}"
+                self._last_event_text = f"YOLO inference failed: {type(exc).__name__}: {exc}"
+                self._live_prediction = None
+                self._yolo_enabled = False
+        elif not self._yolo_enabled:
+            self._yolo_status_text = "Disabled"
+
+    def get_display_images(self, bundle: D405FrameBundle) -> tuple[object, Optional[object]]:
+        if self._paused and self._frozen_bundle is not None:
+            bundle = self._frozen_bundle
+            prediction = self._frozen_prediction
+        else:
+            prediction = self._live_prediction
+        color_rgb = prediction.annotated_rgb if prediction is not None else bundle.color_rgb
+        depth_rgb = bundle.depth_visual_rgb
+        return color_rgb, depth_rgb
+
+    def _pick_detection_at_pixel(self, pixel: tuple[int, int]) -> Optional[YoloDetection]:
+        prediction = self._frozen_prediction if self._paused and self._frozen_prediction is not None else self._live_prediction
+        if prediction is None:
+            return None
+        px, py = pixel
+        matching: list[YoloDetection] = []
+        for detection in prediction.detections:
+            x1, y1, x2, y2 = detection.bbox_xyxy
+            if x1 <= px <= x2 and y1 <= py <= y2:
+                matching.append(detection)
+        if not matching:
+            return None
+        return max(matching, key=lambda det: det.confidence)
 
     def select_target_from_canvas(self, viewer_name: str, display_x: int, display_y: int) -> None:
         if self.workspace is None:
@@ -269,6 +359,16 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
             self.refresh_ui()
             return
 
+        detection = self._pick_detection_at_pixel(src_point) if self._yolo_enabled else None
+        if detection is not None:
+            x1, y1, x2, y2 = detection.bbox_xyxy
+            src_point = ((x1 + x2) // 2, (y1 + y2) // 2)
+            self._selected_detection = detection
+            self._selected_detection_text = f"{detection.label} @ {detection.confidence:.2f} box={detection.bbox_xyxy}"
+        else:
+            self._selected_detection = None
+            self._selected_detection_text = "No detection selected."
+
         query = self.camera.query_point(*src_point)
         if not query.valid or query.point_m is None:
             self.selected_warning_text = f"Depth is invalid at pixel {src_point}."
@@ -288,12 +388,10 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
         self._selected_pixel = src_point
         if warning:
             self.selected_warning_text = warning
-        elif is_near_observe_pose(self._measured_tcp_pose, self.workspace):
-            self.selected_warning_text = "Target selected. Ready to run Execute Pick."
+        elif detection is not None:
+            self.selected_warning_text = "Detection selected. Ready to run Execute Pick."
         else:
-            self.selected_warning_text = (
-                "Target selected, but robot is not near Observe. The point is still valid, but returning to Observe is recommended."
-            )
+            self.selected_warning_text = "Pixel selected. Ready to run Execute Pick."
         self._last_event_text = f"Selected pixel {src_point}."
         self._draw_hover_overlay()
         self.refresh_ui()
@@ -301,6 +399,8 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
     def clear_selection(self) -> None:
         self.selected_plan = None
         self._selected_pixel = None
+        self._selected_detection = None
+        self._selected_detection_text = "No detection selected."
         self.selected_warning_text = "Selection cleared."
         self._last_event_text = "Cleared selected target."
         self._draw_hover_overlay()
@@ -503,12 +603,20 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
             self.run_background_action(self.move_home)
         elif key == "o":
             self.run_background_action(self.move_observe)
+        elif key == "space":
+            self.toggle_pause()
         elif key == "g":
             self.run_background_action(self.open_gripper)
         elif key in ("return", "kp_enter", "p"):
             self.run_background_action(self.execute_pick_sequence)
         elif key == "c":
             self.clear_selection()
+
+    def on_close(self) -> None:
+        try:
+            self._yolo_detector.close()
+        finally:
+            super().on_close()
 
 
 def run(args: argparse.Namespace) -> None:
