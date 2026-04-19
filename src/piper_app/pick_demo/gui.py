@@ -507,7 +507,7 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
         widths = np.linspace(current_width, target_width, steps + 1, dtype=np.float64)[1:]
         for index, intermediate_width in enumerate(widths, start=1):
             self._last_event_text = (
-                f"Step 5/8: close gripper ({index}/{len(widths)}) to {float(intermediate_width):.4f} m."
+                f"Step 5/10: close gripper ({index}/{len(widths)}) to {float(intermediate_width):.4f} m."
             )
             self._request_ui_refresh()
             self._set_gripper_width(float(intermediate_width), force_n)
@@ -533,6 +533,21 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
             self._last_event_text = "drop_prepose timed out, falling back to the saved drop_pose joint approach."
             self._request_ui_refresh()
             self._move_to_joint_pose("drop_pose_fallback", workspace.drop_pose.joint_angles)
+
+    def _move_to_drop_place_pose(self, workspace: PickDemoWorkspace) -> None:
+        drop_staging_pose = workspace.extras.get("drop_staging")
+        if drop_staging_pose is not None:
+            self._last_event_text = "Step 8/10: move to saved drop_staging."
+            self._request_ui_refresh()
+            self._move_to_joint_pose("drop_staging", drop_staging_pose.joint_angles)
+            self._last_event_text = "Step 9/10: move to saved drop_pose."
+            self._request_ui_refresh()
+            self._move_to_joint_pose("drop_pose", workspace.drop_pose.joint_angles)
+            return
+
+        self._last_event_text = "Step 8/10: move to saved drop_pose."
+        self._request_ui_refresh()
+        self._move_to_joint_pose("drop_pose", workspace.drop_pose.joint_angles)
 
     def move_home(self) -> None:
         workspace = self._require_workspace()
@@ -601,40 +616,37 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
         close_width = float(workspace.task_defaults["gripper_close_width_m"])
         force_n = float(workspace.task_defaults["gripper_force_n"])
 
-        self._last_event_text = "Step 1/8: observe ready."
+        self._last_event_text = "Step 1/10: observe ready."
         self._request_ui_refresh()
-        self._last_event_text = "Step 2/8: open gripper."
+        self._last_event_text = "Step 2/10: open gripper."
         self._request_ui_refresh()
         self._set_gripper_width(open_width, force_n)
-        self._last_event_text = "Step 3/8: move to pregrasp."
+        self._last_event_text = "Step 3/10: move to pregrasp."
         self._request_ui_refresh()
         self._move_to_tcp_pose("pregrasp", self.selected_plan.pregrasp_pose, linear=False)
         grasp_linear_move = bool(workspace.task_defaults.get("grasp_linear_move", False))
-        self._last_event_text = "Step 4/8: descend to grasp." if grasp_linear_move else "Step 4/8: move to grasp."
+        self._last_event_text = "Step 4/10: descend to grasp." if grasp_linear_move else "Step 4/10: move to grasp."
         self._request_ui_refresh()
         self._move_to_tcp_pose("grasp", self.selected_plan.grasp_pose, linear=grasp_linear_move)
-        self._last_event_text = "Step 5/8: close gripper."
+        self._last_event_text = "Step 5/10: close gripper."
         self._request_ui_refresh()
         self._close_gripper_gradually(close_width, force_n)
-        self._last_event_text = "Step 6/8: lift object."
+        self._last_event_text = "Step 6/10: lift object."
         self._request_ui_refresh()
         self._move_to_tcp_pose("lift", self.selected_plan.lift_pose, linear=True)
-        place_linear_move = bool(workspace.task_defaults.get("place_linear_move", False))
         self._last_event_text = "Step 7/10: move above drop pose."
         self._request_ui_refresh()
         self._move_to_drop_approach_pose(workspace)
-        self._last_event_text = "Step 8/10: descend to drop pose." if place_linear_move else "Step 8/10: move to drop pose."
-        self._request_ui_refresh()
-        self._move_to_tcp_pose("drop_pose", self.selected_plan.drop_pose, linear=place_linear_move)
-        self._last_event_text = "Step 9/10: release object."
+        self._move_to_drop_place_pose(workspace)
+        self._last_event_text = "Step 10/10: release object."
         self._request_ui_refresh()
         self._set_gripper_width(open_width, force_n)
         if self.dry_run_var.get():
-            self._last_event_text = "Step 10/10: dry-run would return to observe."
+            self._last_event_text = "Release completed in dry-run. Would return to observe."
             self._request_ui_refresh()
         else:
             self.client.command_joint_pose(workspace.observe.joint_angles)
-            self._last_event_text = "Step 10/10: pick sequence completed. Observe command sent."
+            self._last_event_text = "Pick sequence completed. Observe command sent."
         self._request_ui_refresh()
 
     def handle_key_action(self, key: str) -> None:

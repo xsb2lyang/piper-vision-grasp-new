@@ -19,13 +19,19 @@ Typical points to capture first:
 - `home`
 - `observe`
 - `drop_pose`
+- `staging`
 
 You can also add custom names such as:
 
-- `staging`
+- `drop_staging`
 - `inspect`
 - `bin_left`
 - `bin_right`
+
+Recommended meaning:
+
+- `staging`: transition waypoint after lifting and before moving into the place area
+- `drop_staging`: optional second transition waypoint immediately before `drop_pose`
 
 ## What Gets Saved
 

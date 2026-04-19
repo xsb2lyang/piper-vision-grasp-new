@@ -4,6 +4,7 @@ point_names:
   - observe
   - drop_pose
   - staging
+  - drop_staging
   - inspect
 default_note: ""
 task_defaults:
