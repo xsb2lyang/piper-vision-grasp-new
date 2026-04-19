@@ -53,7 +53,7 @@ def _default_task_values(raw_defaults: dict[str, Any]) -> dict[str, Any]:
     task_defaults.setdefault("descend_distance_m", 0.08)
     task_defaults.setdefault("grasp_linear_move", False)
     task_defaults.setdefault("lift_distance_m", 0.10)
-    task_defaults.setdefault("drop_offset_m", [0.0, 0.0, 0.08])
+    task_defaults.setdefault("drop_offset_m", [0.0, 0.0, 0.20])
     task_defaults.setdefault("gripper_open_width_m", 0.0)
     task_defaults.setdefault("gripper_close_width_m", 0.0)
     task_defaults.setdefault("gripper_force_n", 1.0)

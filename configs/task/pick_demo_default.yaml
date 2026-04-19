@@ -12,7 +12,7 @@ task_defaults:
   descend_distance_m: 0.08
   grasp_linear_move: false
   lift_distance_m: 0.10
-  drop_offset_m: [0.0, 0.0, 0.08]
+  drop_offset_m: [0.0, 0.0, 0.20]
   gripper_open_width_m: 0.0
   gripper_close_width_m: 0.0
   gripper_force_n: 1.0

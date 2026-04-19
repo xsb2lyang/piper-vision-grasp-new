@@ -605,18 +605,22 @@ class ClickPickDemoGuiApp(CalibrationViewerBase):
         self._last_event_text = "Step 6/8: lift object."
         self._request_ui_refresh()
         self._move_to_tcp_pose("lift", self.selected_plan.lift_pose, linear=True)
-        self._last_event_text = "Step 7/8: move to saved drop pose."
+        place_linear_move = bool(workspace.task_defaults.get("place_linear_move", False))
+        self._last_event_text = "Step 7/10: move above drop pose."
         self._request_ui_refresh()
-        self._move_to_joint_pose("drop_pose", workspace.drop_pose.joint_angles)
-        self._last_event_text = "Step 8/8: release object."
+        self._move_to_tcp_pose("drop_prepose", self.selected_plan.drop_prepose, linear=False)
+        self._last_event_text = "Step 8/10: descend to drop pose." if place_linear_move else "Step 8/10: move to drop pose."
+        self._request_ui_refresh()
+        self._move_to_tcp_pose("drop_pose", self.selected_plan.drop_pose, linear=place_linear_move)
+        self._last_event_text = "Step 9/10: release object."
         self._request_ui_refresh()
         self._set_gripper_width(open_width, force_n)
         if self.dry_run_var.get():
-            self._last_event_text = "Dry-run: would command observe after release."
+            self._last_event_text = "Step 10/10: dry-run would return to observe."
             self._request_ui_refresh()
         else:
             self.client.command_joint_pose(workspace.observe.joint_angles)
-            self._last_event_text = "Pick sequence completed. Observe command sent."
+            self._last_event_text = "Step 10/10: pick sequence completed. Observe command sent."
         self._request_ui_refresh()
 
     def handle_key_action(self, key: str) -> None:
