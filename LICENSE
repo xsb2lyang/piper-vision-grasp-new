@@ -1,0 +1,19 @@
+This repository is intended to be distributed under the GNU Lesser General Public License,
+version 3.0 or any later version ("LGPL-3.0-or-later").
+
+For practical use in this repository:
+
+- the vendored `third_party/pyAgxArm` SDK includes its own LGPL license text in
+  `third_party/pyAgxArm/LICENSE`
+- unless a file or directory states otherwise, the application-layer code in this
+  repository is intended to follow the same LGPL-3.0-or-later terms so the overall
+  workspace remains license-aligned
+- third-party vendored components may carry additional notices or separate upstream
+  licenses; see `THIRD_PARTY_NOTICES.md`
+
+Important:
+
+- if you redistribute this repository, review both this file and the vendored
+  third-party notices before publishing binaries or modified source releases
+- if you need the full legal text of the LGPL, use the copy provided at
+  `third_party/pyAgxArm/LICENSE`

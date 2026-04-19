@@ -107,6 +107,8 @@ Capture and save:
 
 ## Documentation
 
+- [Documentation Index](docs/README.md)
+- [中文文档导航](docs/README.zh-CN.md)
 - [First-Time Onboarding](docs/onboarding.md)
 - [第一次上手指南](docs/onboarding.zh-CN.md)
 - [Quick Start Workflow](docs/quickstart.md)
@@ -117,6 +119,7 @@ Capture and save:
 - [Keypoint Capture](docs/keypoints.md)
 - [TCP Offset Estimation](docs/tcp_offset.md)
 - [Click Pick Demo](docs/pick_demo.md)
+- [YOLO Target Pick Demo](docs/yolo_target_pick_demo.md)
 
 ## Printable Calibration Board
 

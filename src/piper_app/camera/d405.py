@@ -164,12 +164,22 @@ class D405RealSenseCamera:
         pixel = (int(u), int(v))
         if self._last_depth_m is None or self._intrinsics is None:
             return D405PointQuery(valid=False, pixel=pixel, depth_m=None, point_m=None)
+        return self._query_point_from_depth(self._last_depth_m, pixel)
 
-        height, width = self._last_depth_m.shape
+    def query_point_from_bundle(self, bundle: D405FrameBundle, u: int, v: int) -> D405PointQuery:
+        pixel = (int(u), int(v))
+        if self._intrinsics is None:
+            return D405PointQuery(valid=False, pixel=pixel, depth_m=None, point_m=None)
+        return self._query_point_from_depth(bundle.depth_m, pixel)
+
+    def _query_point_from_depth(self, depth_m_array: np.ndarray, pixel: tuple[int, int]) -> D405PointQuery:
+        u, v = pixel
+
+        height, width = depth_m_array.shape
         if not (0 <= u < width and 0 <= v < height):
             return D405PointQuery(valid=False, pixel=pixel, depth_m=None, point_m=None)
 
-        depth = float(self._last_depth_m[v, u])
+        depth = float(depth_m_array[v, u])
         if not np.isfinite(depth) or depth <= 0.0:
             return D405PointQuery(valid=False, pixel=pixel, depth_m=None, point_m=None)
 

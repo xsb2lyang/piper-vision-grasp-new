@@ -107,6 +107,8 @@
 
 ## 文档
 
+- [文档导航](docs/README.zh-CN.md)
+- [Documentation Index](docs/README.md)
 - [第一次上手指南](docs/onboarding.zh-CN.md)
 - [First-Time Onboarding](docs/onboarding.md)
 - [快速上手流程](docs/quickstart.zh-CN.md)
@@ -117,6 +119,7 @@
 - [关键位采集](docs/keypoints.md)
 - [TCP Offset 估计](docs/tcp_offset.md)
 - [点击抓取 Demo](docs/pick_demo.md)
+- [YOLO 目标抓取 Demo](docs/yolo_target_pick_demo.zh-CN.md)
 
 ## 可直接打印复用的标定板
 

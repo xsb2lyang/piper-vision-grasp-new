@@ -64,10 +64,15 @@ class YoloDetector:
         self._model = None
         self._torch = None
         self._device_label = "uninitialized"
+        self._class_names: list[str] = []
 
     @property
     def device_label(self) -> str:
         return self._device_label
+
+    @property
+    def class_names(self) -> list[str]:
+        return list(self._class_names)
 
     def open(self) -> None:
         if self._model is not None:
@@ -93,6 +98,13 @@ class YoloDetector:
         resolved_device = self._resolve_device()
         self._model = YOLO(str(weights_path))
         self._device_label = resolved_device
+        names = getattr(self._model, "names", {}) or {}
+        if isinstance(names, dict):
+            self._class_names = [str(names[index]) for index in sorted(names)]
+        elif isinstance(names, (list, tuple)):
+            self._class_names = [str(name) for name in names]
+        else:
+            self._class_names = []
 
     def predict(self, image_rgb: np.ndarray) -> YoloPrediction:
         if self._model is None:
@@ -140,6 +152,7 @@ class YoloDetector:
         self._model = None
         self._torch = None
         self._device_label = "uninitialized"
+        self._class_names = []
 
     def _resolve_device(self) -> str:
         requested = str(self.config.device).strip().lower()
