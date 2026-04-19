@@ -11,6 +11,7 @@ from PIL import Image, ImageTk
 from pyAgxArm import ArmModel
 
 from piper_app.camera.d405 import D405CameraConfig, D405FrameBundle, D405PointQuery, D405RealSenseCamera
+from piper_app.perception.yolo import YoloConfig, YoloDetector, YoloPrediction
 from piper_app.robot.client import PiperRobotClient
 from piper_app.robot.factory import PiperConnectionConfig
 
@@ -35,7 +36,7 @@ class DragMonitorGuiApp:
                 bitrate=args.bitrate,
                 firmware_timeout=args.firmware_timeout,
                 speed_percent=1,
-                tcp_offset=[0.0] * 6,
+                tcp_offset=[float(value) for value in getattr(args, "tcp_offset", [0.0] * 6)],
             )
         )
         self._camera = D405RealSenseCamera(
@@ -46,6 +47,18 @@ class DragMonitorGuiApp:
                 fps=int(getattr(args, "camera_fps", 30)),
                 depth_min_m=float(getattr(args, "depth_min_m", 0.05)),
                 depth_max_m=float(getattr(args, "depth_max_m", 0.50)),
+            )
+        )
+        self._yolo_enabled = bool(getattr(args, "yolo", False))
+        self._yolo_detector = YoloDetector(
+            YoloConfig(
+                enabled=self._yolo_enabled,
+                weights_path=str(getattr(args, "yolo_weights", "third_party/yolo/新松-检测/yolo11m.pt")),
+                imgsz=int(getattr(args, "yolo_imgsz", 640)),
+                conf=float(getattr(args, "yolo_conf", 0.25)),
+                iou=float(getattr(args, "yolo_iou", 0.45)),
+                max_det=int(getattr(args, "yolo_max_det", 50)),
+                device=str(getattr(args, "yolo_device", "auto")),
             )
         )
 
@@ -67,6 +80,8 @@ class DragMonitorGuiApp:
         self._camera_status_text = "Disabled"
         self._camera_serial_text = "--"
         self._camera_frame_text = "--"
+        self._yolo_status_text = "Disabled"
+        self._yolo_detections_text = "None"
         self._hover_text = "pixel=(--, --) depth=-- point=(--, --, --)"
         self._camera_bundle: Optional[D405FrameBundle] = None
         self._hover_pixel: Optional[tuple[int, int]] = None
@@ -99,6 +114,8 @@ class DragMonitorGuiApp:
         self.camera_status_var = tk.StringVar(value=self._camera_status_text)
         self.camera_serial_var = tk.StringVar(value=self._camera_serial_text)
         self.camera_frame_var = tk.StringVar(value=self._camera_frame_text)
+        self.yolo_status_var = tk.StringVar(value=self._yolo_status_text)
+        self.yolo_detections_var = tk.StringVar(value=self._yolo_detections_text)
         self.camera_hover_var = tk.StringVar(value=self._hover_text)
 
         self.pose_vars = [tk.StringVar(value="--") for _ in range(6)]
@@ -238,6 +255,8 @@ class DragMonitorGuiApp:
             ("Camera", self.camera_status_var),
             ("Serial", self.camera_serial_var),
             ("Frame", self.camera_frame_var),
+            ("YOLO", self.yolo_status_var),
+            ("Detections", self.yolo_detections_var),
             ("Hover", self.camera_hover_var),
         ]
         for row_idx, (label, variable) in enumerate(rows):
@@ -368,6 +387,8 @@ class DragMonitorGuiApp:
         if not self._camera_enabled:
             self._camera_status_text = "Disabled by CLI/config"
             self._camera_serial_text = "--"
+            self._yolo_status_text = "Disabled"
+            self._yolo_detections_text = "None"
             return
         try:
             serial = self._camera.open()
@@ -375,15 +396,21 @@ class DragMonitorGuiApp:
             self._camera_status_text = f"Unavailable: {type(exc).__name__}"
             self._camera_serial_text = str(exc)
             self._camera_frame_text = "--"
+            self._yolo_status_text = "Unavailable"
+            self._yolo_detections_text = "None"
             return
         self._camera_status_text = "Streaming"
         self._camera_serial_text = serial
+        self._yolo_status_text = "Ready" if self._yolo_enabled else "Disabled"
 
     def _disconnect_camera(self) -> None:
         self._camera.close()
+        self._yolo_detector.close()
         self._camera_status_text = "Disconnected"
         self._camera_serial_text = "--"
         self._camera_frame_text = "--"
+        self._yolo_status_text = "Disconnected" if self._yolo_enabled else "Disabled"
+        self._yolo_detections_text = "None"
         self._hover_text = "pixel=(--, --) depth=-- point=(--, --, --)"
         self._camera_bundle = None
         self._hover_pixel = None
@@ -408,10 +435,38 @@ class DragMonitorGuiApp:
         self._camera_frame_text = f"{bundle.width}x{bundle.height} @ {self.args.camera_fps} fps"
         self._camera_status_text = "Streaming"
         self._camera_serial_text = bundle.serial
+        color_rgb = bundle.color_rgb
 
-        self._color_photo, self._color_view_info = self._render_canvas_image(self.color_canvas, bundle.color_rgb)
+        if self._yolo_enabled:
+            prediction = self._predict_yolo(bundle.color_rgb)
+            if prediction is not None:
+                color_rgb = prediction.annotated_rgb
+
+        self._color_photo, self._color_view_info = self._render_canvas_image(self.color_canvas, color_rgb)
         self._depth_photo, self._depth_view_info = self._render_canvas_image(self.depth_canvas, bundle.depth_visual_rgb)
         self._draw_hover_overlay()
+
+    def _predict_yolo(self, color_rgb):
+        try:
+            prediction = self._yolo_detector.predict(color_rgb)
+        except Exception as exc:
+            self._yolo_status_text = f"Error: {type(exc).__name__}"
+            self._yolo_detections_text = "None"
+            self._last_event_text = f"YOLO disabled after error: {type(exc).__name__}: {exc}"
+            self._yolo_enabled = False
+            return None
+        self._yolo_status_text = f"Running ({prediction.device_label})"
+        self._yolo_detections_text = self._format_detections(prediction)
+        return prediction
+
+    def _format_detections(self, prediction: YoloPrediction) -> str:
+        if not prediction.detections:
+            return "No detections"
+        counts: dict[str, int] = {}
+        for detection in prediction.detections:
+            counts[detection.label] = counts.get(detection.label, 0) + 1
+        summary = ", ".join(f"{label} x{count}" for label, count in sorted(counts.items()))
+        return f"{len(prediction.detections)} total: {summary}"
 
     def _render_canvas_image(self, canvas: tk.Canvas, image_rgb, text: str = ""):
         canvas.delete("all")
@@ -525,6 +580,8 @@ class DragMonitorGuiApp:
         self.camera_status_var.set(self._camera_status_text)
         self.camera_serial_var.set(self._camera_serial_text)
         self.camera_frame_var.set(self._camera_frame_text)
+        self.yolo_status_var.set(self._yolo_status_text)
+        self.yolo_detections_var.set(self._yolo_detections_text)
         self.camera_hover_var.set(self._hover_text)
 
         pose = self._measured_tcp_pose

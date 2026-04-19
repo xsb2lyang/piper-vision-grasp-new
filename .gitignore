@@ -27,3 +27,15 @@ configs/calibration/camera_intrinsics.yaml
 configs/calibration/handeye_tsai.yaml
 configs/calibration/handeye_park.yaml
 configs/calibration/handeye_active.yaml
+configs/calibration/tcp_offset_estimate.yaml
+configs/task/pick_demo_points.yaml
+third_party/yolo/**/.idea/
+third_party/yolo/**/__pycache__/
+third_party/yolo/**/*.pyc
+third_party/yolo/**/ultralytics.egg-info/
+third_party/yolo/**/runs/
+third_party/yolo/**/dataset/
+third_party/yolo/**/*.pt
+third_party/yolo/**/使用此权重/
+third_party/yolo/**/yolo11n/
+third_party/yolo/**/*.docx

@@ -1,0 +1,27 @@
+output_path: configs/task/pick_demo_points.yaml
+point_names:
+  - home
+  - observe
+  - drop_pose
+  - staging
+  - inspect
+default_note: ""
+task_defaults:
+  pick_point_offset_m: [-0.15, 0.0, 0.10]
+  pregrasp_offset_m: [0.0, 0.0, 0.08]
+  descend_distance_m: 0.08
+  lift_distance_m: 0.10
+  drop_offset_m: [0.0, 0.0, 0.08]
+  gripper_open_width_m: 0.0
+  gripper_close_width_m: 0.0
+  gripper_force_n: 1.0
+  gripper_settle_s: 0.8
+  move_timeout_s: 15.0
+  place_timeout_s: 15.0
+  place_linear_move: false
+  retreat_linear_move: false
+  workspace_min_m: [-0.45, -0.40, -0.03]
+  workspace_max_m: [0.50, 0.40, 0.45]
+  observe_tolerance_translation_m: 0.03
+  observe_tolerance_rotation_deg: 10.0
+  hover_timeout_s: 5.0

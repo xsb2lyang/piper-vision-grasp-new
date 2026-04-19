@@ -25,13 +25,20 @@ Run teleop:
 ./scripts/run_gui.sh
 ./scripts/run_keyboard.sh
 ./scripts/run_monitor.sh
+./scripts/run_monitor.sh --yolo
 ./scripts/run_calibrate_intrinsics.sh
 ./scripts/run_calibrate_handeye.sh
 ./scripts/run_validate_handeye.sh
+./scripts/run_capture_keypoints.sh
+./scripts/run_click_pick_demo.sh
+./scripts/run_estimate_tcp_offset.sh
 ```
 
 More details:
 
 - [docs/installation.md](docs/installation.md)
 - [docs/handeye.md](docs/handeye.md)
+- [docs/keypoints.md](docs/keypoints.md)
+- [docs/pick_demo.md](docs/pick_demo.md)
+- [docs/tcp_offset.md](docs/tcp_offset.md)
 - [docs/teleop.md](docs/teleop.md)

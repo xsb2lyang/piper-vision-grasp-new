@@ -3,4 +3,4 @@ interface: auto
 channel: auto
 bitrate: 1000000
 firmware_timeout: 5.0
-tcp_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+tcp_offset: [-0.0133, -0.0038, 0.1972, 0.0, 0.0, 0.0]

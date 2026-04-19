@@ -30,6 +30,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interface", type=str, default=interface)
     parser.add_argument("--channel", type=str, default=channel)
     parser.add_argument("--bitrate", type=int, default=robot_defaults.get("bitrate", 1_000_000))
+    parser.add_argument(
+        "--tcp-offset",
+        type=float,
+        nargs=6,
+        metavar=("X", "Y", "Z", "ROLL", "PITCH", "YAW"),
+        default=robot_defaults.get("tcp_offset", [0.0] * 6),
+    )
     parser.add_argument("--poll-interval-s", type=float, default=teleop_defaults.get("poll_interval_s", 0.2))
     parser.add_argument("--firmware-timeout", type=float, default=robot_defaults.get("firmware_timeout", 5.0))
 

@@ -9,16 +9,31 @@ description = "Application-layer tooling for Piper robotic arms built on top of 
 readme = "README.md"
 requires-python = ">=3.10,<3.11"
 dependencies = [
+    "matplotlib>=3.4",
     "numpy>=2.0",
     "opencv-contrib-python-headless>=4.13.0.92",
+    "pandas>=1.1.4",
     "Pillow>=12.0",
+    "psutil>=5.9",
+    "py-cpuinfo>=9.0.0",
     "PyYAML>=6.0",
     "pyrealsense2==2.56.5.9235",
+    "requests>=2.23.0",
+    "scipy>=1.4.1",
+    "seaborn>=0.11.0",
+    "torch>=2.1",
+    "torchvision>=0.16",
+    "tqdm>=4.64.0",
+    "ultralytics>=8.4.39",
+    "ultralytics-thop>=2.0.18",
 ]
 
 [project.scripts]
 piper-calibrate-handeye = "piper_app.cli.calibrate_handeye:main"
 piper-calibrate-intrinsics = "piper_app.cli.calibrate_intrinsics:main"
+piper-capture-keypoints = "piper_app.cli.capture_keypoints:main"
+piper-click-pick-demo = "piper_app.cli.click_pick_demo:main"
+piper-estimate-tcp-offset = "piper_app.cli.estimate_tcp_offset:main"
 piper-validate-handeye = "piper_app.cli.validate_handeye:main"
 piper-drag-monitor-gui = "piper_app.cli.drag_monitor_gui:main"
 piper-teleop-gui = "piper_app.cli.teleop_tcp_gui:main"

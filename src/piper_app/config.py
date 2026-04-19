@@ -25,4 +25,5 @@ def load_project_defaults() -> Dict[str, Dict[str, Any]]:
         "teleop": load_yaml_config("configs/teleop/default.yaml"),
         "camera": load_yaml_config("configs/camera/d405_default.yaml"),
         "calibration": load_yaml_config("configs/calibration/default.yaml"),
+        "task": load_yaml_config("configs/task/pick_demo_default.yaml"),
     }

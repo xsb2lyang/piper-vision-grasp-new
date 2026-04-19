@@ -67,6 +67,10 @@ The setup script installs:
   - `Pillow`
   - `PyYAML`
   - `pyrealsense2`
+  - `torch`
+  - `torchvision`
+  - `ultralytics`
+  - YOLO runtime dependencies used by the vendored `Ultralytics YOLO11` code
 
 Manual equivalent:
 
@@ -115,6 +119,8 @@ Useful options:
 ./scripts/run_monitor.sh --camera-serial auto
 ./scripts/run_monitor.sh --camera-width 640 --camera-height 480 --camera-fps 30
 ./scripts/run_monitor.sh --depth-min-m 0.05 --depth-max-m 0.50
+./scripts/run_monitor.sh --yolo
+./scripts/run_monitor.sh --yolo --yolo-weights third_party/yolo/新松-检测/yolo11m.pt
 ./scripts/run_monitor.sh --no-camera
 ```
 
@@ -136,6 +142,24 @@ Hand-eye validation:
 
 ```bash
 ./scripts/run_validate_handeye.sh
+```
+
+Keypoint capture:
+
+```bash
+./scripts/run_capture_keypoints.sh
+```
+
+Click pick demo:
+
+```bash
+./scripts/run_click_pick_demo.sh
+```
+
+TCP offset estimator:
+
+```bash
+./scripts/run_estimate_tcp_offset.sh
 ```
 
 See [docs/handeye.md](handeye.md) for the calibration workflow and output files.

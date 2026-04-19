@@ -10,11 +10,18 @@ def test_cli_imports() -> None:
     import piper_app.calibration.validation  # noqa: F401
     import piper_app.cli.calibrate_handeye  # noqa: F401
     import piper_app.cli.calibrate_intrinsics  # noqa: F401
+    import piper_app.cli.capture_keypoints  # noqa: F401
+    import piper_app.cli.click_pick_demo  # noqa: F401
     import piper_app.cli.drag_monitor_gui  # noqa: F401
+    import piper_app.cli.estimate_tcp_offset  # noqa: F401
     import piper_app.cli.teleop_tcp_gui  # noqa: F401
     import piper_app.cli.teleop_tcp_keyboard  # noqa: F401
     import piper_app.cli.validate_handeye  # noqa: F401
     import piper_app.camera.d405  # noqa: F401
+    import piper_app.keypoints.store  # noqa: F401
+    import piper_app.perception.yolo  # noqa: F401
+    import piper_app.pick_demo.task  # noqa: F401
+    import piper_app.tcp_offset.estimate  # noqa: F401
 
 
 def test_project_defaults() -> None:
@@ -26,7 +33,9 @@ def test_project_defaults() -> None:
     assert defaults["camera"]["enabled"] is True
     assert defaults["camera"]["serial"] == "auto"
     assert "depth_min_m" in defaults["camera"]
+    assert defaults["camera"]["yolo_weights"].endswith("yolo11m.pt")
     assert defaults["calibration"]["board_config_path"].endswith("charuco_board.yaml")
+    assert defaults["task"]["output_path"].endswith("pick_demo_points.yaml")
 
 
 def test_charuco_board_loader() -> None:

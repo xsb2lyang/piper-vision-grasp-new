@@ -51,7 +51,7 @@ class CalibrationViewerBase:
                     bitrate=args.bitrate,
                     firmware_timeout=args.firmware_timeout,
                     speed_percent=1,
-                    tcp_offset=[0.0] * 6,
+                    tcp_offset=[float(value) for value in getattr(args, "tcp_offset", [0.0] * 6)],
                 )
             )
 

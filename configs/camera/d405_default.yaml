@@ -6,3 +6,10 @@ fps: 30
 depth_min_m: 0.05
 depth_max_m: 0.50
 update_interval_ms: 100
+yolo_enabled: false
+yolo_weights: third_party/yolo/新松-检测/yolo11m.pt
+yolo_conf: 0.25
+yolo_iou: 0.45
+yolo_max_det: 50
+yolo_imgsz: 640
+yolo_device: auto
