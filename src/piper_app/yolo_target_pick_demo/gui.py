@@ -5,6 +5,8 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional
 
+from PIL import Image, ImageDraw
+
 from piper_app.camera.d405 import D405FrameBundle
 from piper_app.perception.yolo import YoloDetection, YoloPrediction
 from piper_app.pick_demo.gui import ClickPickDemoGuiApp
@@ -161,6 +163,38 @@ class YoloTargetPickDemoGuiApp(ClickPickDemoGuiApp):
             return None
         return max(matches, key=lambda detection: detection.confidence)
 
+    def _filtered_detections_for_display(self, prediction: Optional[YoloPrediction]) -> list[YoloDetection]:
+        if prediction is None:
+            return []
+        target_label = self._current_target_label()
+        if not target_label:
+            return list(prediction.detections)
+        normalized_target = self._normalize_label(target_label)
+        return [
+            detection for detection in prediction.detections
+            if self._normalize_label(detection.label) == normalized_target
+        ]
+
+    def _render_filtered_prediction(self, bundle: D405FrameBundle, prediction: Optional[YoloPrediction]):
+        detections = self._filtered_detections_for_display(prediction)
+        if prediction is None:
+            return bundle.color_rgb
+        if not detections and self._current_target_label():
+            return bundle.color_rgb
+
+        image = Image.fromarray(bundle.color_rgb)
+        draw = ImageDraw.Draw(image)
+        for detection in detections:
+            x1, y1, x2, y2 = detection.bbox_xyxy
+            draw.rectangle((x1, y1, x2, y2), outline="#22c55e", width=3)
+            label_text = f"{detection.label} {detection.confidence:.2f}"
+            text_x = max(0, x1)
+            text_y = max(0, y1 - 18)
+            text_bbox = draw.textbbox((text_x, text_y), label_text)
+            draw.rectangle(text_bbox, fill="#22c55e")
+            draw.text((text_x, text_y), label_text, fill="black")
+        return image
+
     def _select_target_from_source_pixel(
         self,
         src_point: tuple[int, int],
@@ -273,6 +307,16 @@ class YoloTargetPickDemoGuiApp(ClickPickDemoGuiApp):
         super().on_camera_bundle(bundle)
         if self._yolo_enabled:
             self._sync_yolo_label_options()
+
+    def get_display_images(self, bundle: D405FrameBundle) -> tuple[object, Optional[object]]:
+        if self._paused and self._frozen_bundle is not None:
+            bundle = self._frozen_bundle
+            prediction = self._frozen_prediction
+        else:
+            prediction = self._live_prediction
+
+        color_rgb = self._render_filtered_prediction(bundle, prediction)
+        return color_rgb, bundle.depth_visual_rgb
 
     def execute_pick_sequence(self) -> None:
         target_label = self._current_target_label()
