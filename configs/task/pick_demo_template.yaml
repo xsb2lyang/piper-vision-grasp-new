@@ -1,0 +1,138 @@
+kind: pick_demo_keypoints
+generated_at: '2026-04-19 18:43:35'
+template_note: Repository-managed reference keypoints for the current Piper + D405 eye-in-hand setup. You can use this file directly as a starting point, or capture your own local configs/task/pick_demo_points.yaml.
+robot: piper
+can:
+  interface: socketcan
+  channel: can0
+  bitrate: 1000000
+tcp_offset:
+- -0.0133
+- -0.0038
+- 0.1972
+- 0.0
+- 0.0
+- 0.0
+task_defaults:
+  pick_point_offset_m:
+  - -0.09
+  - 0.0
+  - 0.18
+  pregrasp_offset_m:
+  - 0.0
+  - 0.0
+  - 0.08
+  descend_distance_m: 0.08
+  grasp_linear_move: false
+  lift_distance_m: 0.1
+  drop_offset_m:
+  - 0.0
+  - 0.0
+  - 0.2
+  gripper_open_width_m: 0.0
+  gripper_close_width_m: 0.0
+  gripper_force_n: 1.0
+  gripper_settle_s: 0.8
+  gripper_close_steps: 4
+  gripper_close_step_pause_s: 0.15
+  move_timeout_s: 15.0
+  place_timeout_s: 15.0
+  place_linear_move: false
+  retreat_linear_move: false
+  workspace_min_m:
+  - -0.45
+  - -0.4
+  - -0.03
+  workspace_max_m:
+  - 0.5
+  - 0.4
+  - 0.45
+  observe_tolerance_translation_m: 0.03
+  observe_tolerance_rotation_deg: 10.0
+  hover_timeout_s: 5.0
+points:
+  drop_pose:
+    tcp_pose:
+    - 0.275507
+    - -0.322415
+    - 0.266878
+    - 3.132324955261703
+    - 0.15437437233889845
+    - 2.332562732120342
+    joint_angles:
+    - -0.8675857178738613
+    - 2.0245819323134224
+    - -1.8375000897921503
+    - 0.018832102629018816
+    - 1.3174268792828798
+    - -0.06262241356155654
+    note: ''
+    captured_at: '2026-04-18 23:45:07'
+  drop_staging:
+    tcp_pose:
+    - 0.306767
+    - -0.274636
+    - 0.31118799999999996
+    - -3.132499488186903
+    - 0.6039886409451577
+    - 2.3494924258646868
+    joint_angles:
+    - -0.719005838651584
+    - 1.825596944293549
+    - -1.6490219838692823
+    - -0.06557201999742697
+    - 0.8803266214134199
+    - 0.10199704148654862
+    note: ''
+    captured_at: '2026-04-19 18:40:28'
+  home:
+    tcp_pose:
+    - 0.057281
+    - -0.000572
+    - 0.204306
+    - -3.09939059227657
+    - 0.8420515509171843
+    - -3.0983084881403338
+    joint_angles:
+    - -0.03080506129769992
+    - 0.27860690849585484
+    - -0.2117258915594321
+    - 0.019250981649497456
+    - 0.7484844497177682
+    - -0.06342526501747393
+    note: ''
+    captured_at: '2026-04-19 18:43:34'
+  observe:
+    tcp_pose:
+    - 0.12174399999999999
+    - 0.000106
+    - 0.318975
+    - 3.122324218647776
+    - 0.4546931767295627
+    - -3.120194916960343
+    joint_angles:
+    - -0.030543261909900768
+    - 0.8148593211711126
+    - -0.8229576489003663
+    - 0.044872415068774214
+    - 1.2132307229388184
+    - -0.062395520758797285
+    note: ''
+    captured_at: '2026-04-19 12:59:27'
+  staging:
+    tcp_pose:
+    - 0.265583
+    - -0.190762
+    - 0.40110399999999996
+    - 3.031165671816112
+    - 0.6731734924942129
+    - 2.368638687759064
+    joint_angles:
+    - -0.6283883438880383
+    - 1.5283673726789144
+    - -1.614988063455393
+    - 0.022619467105846513
+    - 1.0642319646960623
+    - 0.1019097750239489
+    note: ''
+    captured_at: '2026-04-19 18:13:13'

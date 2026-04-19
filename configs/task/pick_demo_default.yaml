@@ -1,4 +1,5 @@
 output_path: configs/task/pick_demo_points.yaml
+template_path: configs/task/pick_demo_template.yaml
 point_names:
   - home
   - observe

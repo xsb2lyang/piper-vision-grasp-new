@@ -18,3 +18,6 @@
 - [点击抓取 Demo](pick_demo.md)
 - [YOLO 目标抓取 Demo](yolo_target_pick_demo.zh-CN.md)
 
+仓库自带的可复用任务模板：
+
+- `configs/task/pick_demo_template.yaml`

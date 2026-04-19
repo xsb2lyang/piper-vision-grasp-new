@@ -18,3 +18,6 @@ Core guides:
 - [Click Pick Demo](pick_demo.md)
 - [YOLO Target Pick Demo](yolo_target_pick_demo.md)
 
+Tracked reusable task template:
+
+- `configs/task/pick_demo_template.yaml`

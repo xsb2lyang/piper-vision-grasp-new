@@ -111,6 +111,12 @@ Save at least:
 - `observe`
 - `drop_pose`
 
+You can also start from the tracked repository template:
+
+- `configs/task/pick_demo_template.yaml`
+
+The demos prefer your local `configs/task/pick_demo_points.yaml`. If you have not captured your own poses yet, they fall back to the tracked template automatically.
+
 ### Step 9. Verify The Monitor
 
 Run:

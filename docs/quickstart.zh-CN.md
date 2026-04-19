@@ -159,6 +159,18 @@ configs/robot/piper_default.yaml
 configs/task/pick_demo_points.yaml
 ```
 
+仓库里还自带了一份受版本管理的参考模板：
+
+```text
+configs/task/pick_demo_template.yaml
+```
+
+推荐这样用：
+
+- 第一次 clone 下来，可以直接把这份模板当默认起点使用。
+- 如果你希望按自己这台机械臂、相机安装和工作台重新示教，再采集并保存本地 `configs/task/pick_demo_points.yaml`。
+- 抓取 demo 会优先读本地 `pick_demo_points.yaml`；如果本地文件不存在，就会自动回退到模板。
+
 ## 11. 运行监控界面
 
 基础监控：

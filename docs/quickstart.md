@@ -157,6 +157,17 @@ Output:
 configs/task/pick_demo_points.yaml
 ```
 
+The repository also includes a tracked reference template:
+
+```text
+configs/task/pick_demo_template.yaml
+```
+
+Recommended practice:
+
+- Use the included template as the default starting point when you first clone the project.
+- Capture your own `configs/task/pick_demo_points.yaml` when you want to override the template with poses tuned to your robot and workspace.
+
 ## 11. Run The Monitor
 
 Robot + camera monitor:

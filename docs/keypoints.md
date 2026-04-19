@@ -14,6 +14,18 @@ Default output:
 configs/task/pick_demo_points.yaml
 ```
 
+Repository-managed reference template:
+
+```text
+configs/task/pick_demo_template.yaml
+```
+
+Recommended usage:
+
+- Use `configs/task/pick_demo_template.yaml` as the repo-provided starting point when you first clone the project.
+- Capture your own `configs/task/pick_demo_points.yaml` when you want hardware-specific poses for your robot, camera mount, and workspace.
+- The pick demos prefer your local `pick_demo_points.yaml`. If it does not exist, they fall back to the tracked template automatically.
+
 Typical points to capture first:
 
 - `home`

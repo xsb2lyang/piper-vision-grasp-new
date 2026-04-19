@@ -129,6 +129,12 @@ cd piper-vision-grasp-new
 - `observe`
 - `drop_pose`
 
+你也可以先直接使用仓库自带的参考模板：
+
+- `configs/task/pick_demo_template.yaml`
+
+抓取 demo 会优先使用你本地的 `configs/task/pick_demo_points.yaml`；如果你还没有自己采集，它会自动回退到这份受版本管理的模板。
+
 ### 第 9 步：先确认监控链路正常
 
 运行：

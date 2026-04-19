@@ -33,6 +33,12 @@ The demo reads:
 - `configs/task/pick_demo_points.yaml`
 - `configs/calibration/handeye_active.yaml`
 
+If `configs/task/pick_demo_points.yaml` does not exist yet, the demo automatically falls back to:
+
+- `configs/task/pick_demo_template.yaml`
+
+That tracked template is meant to be a reusable repository default for the current Piper + D405 eye-in-hand setup. For best results on another robot or mount, capture your own local keypoints and let them override the template.
+
 Recommended place-related keypoints:
 
 - `drop_pose`: the final release pose

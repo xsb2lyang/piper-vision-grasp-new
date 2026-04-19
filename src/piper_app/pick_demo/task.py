@@ -83,7 +83,16 @@ def load_handeye_matrix(path_like: str) -> np.ndarray:
 
 def load_pick_workspace(config_path: str, handeye_path: str) -> PickDemoWorkspace:
     defaults = load_project_defaults()["task"]
-    payload = load_keypoint_config(config_path)
+    requested_path = resolve_repo_path(config_path)
+    template_path = resolve_repo_path(defaults.get("template_path", "configs/task/pick_demo_template.yaml"))
+    active_path = requested_path
+    if requested_path.exists():
+        payload = load_keypoint_config(requested_path)
+    elif template_path.exists():
+        payload = load_keypoint_config(template_path)
+        active_path = template_path
+    else:
+        payload = {}
     records = parse_keypoint_records(payload)
     home = find_record(records, "home")
     observe = find_record(records, "observe")
@@ -101,7 +110,7 @@ def load_pick_workspace(config_path: str, handeye_path: str) -> PickDemoWorkspac
         if record.name not in {"home", "observe", "drop_pose"}
     }
     return PickDemoWorkspace(
-        config_path=str(resolve_repo_path(config_path)),
+        config_path=str(active_path),
         handeye_path=str(resolve_repo_path(handeye_path)),
         robot=str(payload.get("robot", defaults.get("robot", "piper"))),
         can=dict(payload.get("can", {})),
