@@ -53,7 +53,14 @@
 ./scripts/run_doctor.sh
 ```
 
-如果需要拉起 CAN：
+第一次把机械臂接到电脑上时，建议先执行这两条 CAN 命令：
+
+```bash
+sudo ip link set can0 type can bitrate 1000000
+sudo ip link set can0 up
+```
+
+如果你更希望用项目脚本，也可以这样做：
 
 ```bash
 sudo ./scripts/bringup_can.sh can0 1000000

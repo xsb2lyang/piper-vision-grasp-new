@@ -53,7 +53,14 @@ Run the reproducibility doctor:
 ./scripts/run_doctor.sh
 ```
 
-Bring up CAN if needed:
+When you first connect the robot to a new computer, run these two CAN commands first:
+
+```bash
+sudo ip link set can0 type can bitrate 1000000
+sudo ip link set can0 up
+```
+
+If you prefer using the project helper script, run:
 
 ```bash
 sudo ./scripts/bringup_can.sh can0 1000000
