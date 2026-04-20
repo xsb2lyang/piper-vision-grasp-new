@@ -47,6 +47,18 @@
 ./scripts/setup_env.sh --recreate
 ```
 
+跑一次项目自检：
+
+```bash
+./scripts/run_doctor.sh
+```
+
+如果需要拉起 CAN：
+
+```bash
+sudo ./scripts/bringup_can.sh can0 1000000
+```
+
 启动监控界面：
 
 ```bash
@@ -113,6 +125,8 @@
 - [First-Time Onboarding](docs/onboarding.md)
 - [快速上手流程](docs/quickstart.zh-CN.md)
 - [Quick Start Workflow](docs/quickstart.md)
+- [新设备复现检查清单](docs/reproduce_checklist.zh-CN.md)
+- [Reproducibility Checklist](docs/reproduce_checklist.md)
 - [安装说明](docs/installation.md)
 - [遥操作](docs/teleop.md)
 - [手眼标定](docs/handeye.md)

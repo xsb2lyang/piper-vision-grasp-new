@@ -47,6 +47,18 @@ Create or recreate the environment:
 ./scripts/setup_env.sh --recreate
 ```
 
+Run the reproducibility doctor:
+
+```bash
+./scripts/run_doctor.sh
+```
+
+Bring up CAN if needed:
+
+```bash
+sudo ./scripts/bringup_can.sh can0 1000000
+```
+
 Start the monitor:
 
 ```bash
@@ -113,6 +125,8 @@ Capture and save:
 - [第一次上手指南](docs/onboarding.zh-CN.md)
 - [Quick Start Workflow](docs/quickstart.md)
 - [快速上手流程](docs/quickstart.zh-CN.md)
+- [Reproducibility Checklist](docs/reproduce_checklist.md)
+- [新设备复现检查清单](docs/reproduce_checklist.zh-CN.md)
 - [Installation](docs/installation.md)
 - [Teleoperation](docs/teleop.md)
 - [Hand-Eye Calibration](docs/handeye.md)

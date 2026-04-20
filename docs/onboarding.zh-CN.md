@@ -19,10 +19,11 @@
 1. [../README.zh-CN.md](../README.zh-CN.md)
 2. [installation.md](installation.md)
 3. [quickstart.zh-CN.md](quickstart.zh-CN.md)
-4. [handeye.md](handeye.md)
-5. [tcp_offset.md](tcp_offset.md)
-6. [keypoints.md](keypoints.md)
-7. [pick_demo.md](pick_demo.md)
+4. [reproduce_checklist.zh-CN.md](reproduce_checklist.zh-CN.md)
+5. [handeye.md](handeye.md)
+6. [tcp_offset.md](tcp_offset.md)
+7. [keypoints.md](keypoints.md)
+8. [pick_demo.md](pick_demo.md)
 
 ## 第一次上手每一步怎么做
 
@@ -60,6 +61,12 @@ cd piper-vision-grasp-new
 - `.venv` 已经创建成功
 - `rs-enumerate-devices` 能看到 D405
 - 机械臂 CAN 可以正常使用
+
+然后再运行：
+
+```bash
+./scripts/run_doctor.sh
+```
 
 ### 第 4 步：打印标定板
 

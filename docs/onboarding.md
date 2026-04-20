@@ -17,10 +17,11 @@ Read the project in this order:
 1. [README.md](../README.md)
 2. [installation.md](installation.md)
 3. [quickstart.md](quickstart.md)
-4. [handeye.md](handeye.md)
-5. [tcp_offset.md](tcp_offset.md)
-6. [keypoints.md](keypoints.md)
-7. [pick_demo.md](pick_demo.md)
+4. [reproduce_checklist.md](reproduce_checklist.md)
+5. [handeye.md](handeye.md)
+6. [tcp_offset.md](tcp_offset.md)
+7. [keypoints.md](keypoints.md)
+8. [pick_demo.md](pick_demo.md)
 
 ## What To Do Step By Step
 
@@ -56,6 +57,12 @@ After that, confirm:
 - the `.venv` exists
 - `rs-enumerate-devices` can see the D405
 - the robot CAN interface is available
+
+Then run:
+
+```bash
+./scripts/run_doctor.sh
+```
 
 ### Step 4. Print The ChArUco Board
 

@@ -7,7 +7,8 @@ Recommended reading order for first-time users:
 1. [First-Time Onboarding](onboarding.md)
 2. [Installation](installation.md)
 3. [Quick Start Workflow](quickstart.md)
-4. Calibration and task-specific guides below
+4. [Reproducibility Checklist](reproduce_checklist.md)
+5. Calibration and task-specific guides below
 
 Core guides:
 

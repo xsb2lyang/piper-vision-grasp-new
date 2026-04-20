@@ -86,6 +86,12 @@ uv pip install --python .venv/bin/python --no-build-isolation -e .
 
 ## 4. Validate The Environment
 
+Run the project doctor first:
+
+```bash
+./scripts/run_doctor.sh
+```
+
 Check the Python version:
 
 ```bash
@@ -107,7 +113,21 @@ Check the camera:
 rs-enumerate-devices
 ```
 
-## 5. Run The Monitor
+## 5. Bring Up CAN
+
+If your USB-CAN adapter is recognized and `can0` exists but is down, use the project helper:
+
+```bash
+sudo ./scripts/bringup_can.sh can0 1000000
+```
+
+Then re-run:
+
+```bash
+./scripts/run_doctor.sh
+```
+
+## 6. Run The Monitor
 
 Start the read-only robot and D405 monitor:
 
@@ -126,7 +146,7 @@ Useful options:
 ./scripts/run_monitor.sh --no-camera
 ```
 
-## 6. Run Calibration Tools
+## 7. Run Calibration Tools
 
 Camera intrinsics:
 

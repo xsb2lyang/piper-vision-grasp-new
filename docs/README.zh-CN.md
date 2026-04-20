@@ -7,7 +7,8 @@
 1. [第一次上手指南](onboarding.zh-CN.md)
 2. [安装说明](installation.md)
 3. [快速上手流程](quickstart.zh-CN.md)
-4. 再进入下面的专项文档
+4. [新设备复现检查清单](reproduce_checklist.zh-CN.md)
+5. 再进入下面的专项文档
 
 核心文档：
 

@@ -53,6 +53,12 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ## 4. 检查硬件
 
+建议先跑一次项目自检：
+
+```bash
+./scripts/run_doctor.sh
+```
+
 ### D405
 
 ```bash
@@ -62,6 +68,13 @@ rs-enumerate-devices
 ### 机械臂 CAN
 
 确保机械臂上电，并且默认 CAN 通道 `can0` 已正常拉起。
+
+如果 `can0` 已存在但没拉起，可以这样做：
+
+```bash
+sudo ./scripts/bringup_can.sh can0 1000000
+./scripts/run_doctor.sh
+```
 
 ## 5. 打印标定板
 

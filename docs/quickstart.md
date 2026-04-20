@@ -53,6 +53,12 @@ If you need to rebuild the environment:
 
 ## 4. Verify Hardware
 
+Run the project doctor first:
+
+```bash
+./scripts/run_doctor.sh
+```
+
 ### D405
 
 ```bash
@@ -62,6 +68,13 @@ rs-enumerate-devices
 ### Robot CAN
 
 Make sure the robot is powered on and the CAN interface is up. In this project the default channel is `can0`.
+
+If `can0` exists but is down:
+
+```bash
+sudo ./scripts/bringup_can.sh can0 1000000
+./scripts/run_doctor.sh
+```
 
 ## 5. Print The Calibration Board
 
